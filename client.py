@@ -9,7 +9,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import DataCollatorForLanguageModeling, PreTrainedModel, PreTrainedTokenizerBase
 
-from config import HarnessConfig
+from config import Config
 
 
 def configure_trainable_lora_parameters(model: PreTrainedModel, method: str) -> None:
@@ -55,7 +55,7 @@ class Client:
 		client_id: int,
 		dataset: Dataset,
 		tokenizer: PreTrainedTokenizerBase,
-		config: HarnessConfig,
+		config: Config,
 		device: torch.device,
 	) -> None:
 		self.client_id = client_id

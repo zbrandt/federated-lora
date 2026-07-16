@@ -7,14 +7,14 @@ from datasets import Dataset
 from torch.utils.data import DataLoader
 from transformers import DataCollatorForLanguageModeling, PreTrainedModel, PreTrainedTokenizerBase
 
-from config import HarnessConfig
+from config import Config
 
 
 def evaluate_perplexity(
 	model: PreTrainedModel,
 	dataset: Dataset,
 	tokenizer: PreTrainedTokenizerBase,
-	config: HarnessConfig,
+	config: Config,
 	device: torch.device,
 ) -> tuple[float, float]:
 	# Use the same collator as training so the eval metric is comparable.

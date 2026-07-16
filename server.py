@@ -8,7 +8,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from aggregate import FFAAvg, FedITAvg
 from client import Client, configure_trainable_lora_parameters, extract_adapter_state
-from config import HarnessConfig
+from config import Config
 from data import load_datasets
 from eval import evaluate_perplexity
 
@@ -24,8 +24,8 @@ class RoundMetrics:
 	cumulative_uploaded_bytes: int
 
 
-class FederatedServer:
-	def __init__(self, config: HarnessConfig) -> None:
+class Server:
+	def __init__(self, config: Config) -> None:
 		self.config = config
 		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datasets import Dataset, load_dataset
 from transformers import PreTrainedTokenizerBase
 
-from config import HarnessConfig
+from config import Config
 
 
 def _filter_empty_text(dataset: Dataset, text_field: str) -> Dataset:
@@ -45,7 +45,7 @@ def _split_dataset(dataset: Dataset, num_clients: int) -> list[Dataset]:
 
 
 def load_datasets(
-	config: HarnessConfig,
+	config: Config,
 	tokenizer: PreTrainedTokenizerBase,
 ) -> tuple[list[Dataset], Dataset]:
 	# Load the same corpus split used by the original single-node prototype.
