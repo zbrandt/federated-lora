@@ -5,6 +5,7 @@ from typing import Literal
 
 
 FederatedMethod = Literal["fedit", "ffa"]
+PartitionStrategy = Literal["iid", "noniid"]
 
 
 @dataclass(slots=True)
@@ -19,6 +20,8 @@ class Config:
 
     # Federated training shape.
     num_clients: int = 4
+    partition_strategy: PartitionStrategy = "iid"
+    dirichlet_alpha: float = 0.5
     rounds: int = 2
     local_epochs: int = 1
     batch_size: int = 2

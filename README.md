@@ -67,6 +67,8 @@ The most useful arguments are:
 - `--method {fedit,ffa}`: choose the aggregation/training strategy.
 - `--rounds`: number of communication rounds.
 - `--clients`: number of federated clients.
+- `--partition-strategy {iid,noniid}`: choose uniform or Dirichlet-skewed data splits.
+- `--dirichlet-alpha`: controls how uneven the non-IID split is; smaller means more skew.
 - `--local-epochs`: local epochs per client per round.
 - `--batch-size`: client and eval batch size.
 - `--learning-rate`: local optimizer learning rate.
@@ -83,6 +85,8 @@ The current harness uses these defaults unless you override them on the command 
 - train split: `train[:1%]`
 - eval split: `validation[:1%]`
 - clients: 4
+- partition strategy: IID
+- Dirichlet alpha: 0.5
 - rounds: 2
 - local epochs: 1
 - batch size: 2

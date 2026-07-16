@@ -18,6 +18,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--method", choices=["fedit", "ffa"], default="fedit")
     parser.add_argument("--rounds", type=int, default=2)
     parser.add_argument("--clients", type=int, default=4)
+    parser.add_argument("--partition-strategy", choices=["iid", "noniid"], default="iid")
+    parser.add_argument("--dirichlet-alpha", type=float, default=0.5)
     parser.add_argument("--local-epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--learning-rate", type=float, default=5e-4)
@@ -38,6 +40,8 @@ def build(args: argparse.Namespace) -> Config:
         method=args.method,
         rounds=args.rounds,
         num_clients=args.clients,
+        partition_strategy=args.partition_strategy,
+        dirichlet_alpha=args.dirichlet_alpha,
         local_epochs=args.local_epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
