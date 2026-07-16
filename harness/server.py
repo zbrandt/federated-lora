@@ -104,15 +104,22 @@ class Server:
 			)
 
 			cumulative_uploaded_bytes += round_uploaded_bytes
-			history.append(
-				RoundMetrics(
-					round_index=round_index,
-					train_loss=sum(train_losses) / max(1, len(train_losses)),
-					eval_loss=eval_loss,
-					perplexity=perplexity,
-					uploaded_bytes=round_uploaded_bytes,
-					cumulative_uploaded_bytes=cumulative_uploaded_bytes,
-				)
+			metrics = RoundMetrics(
+				round_index=round_index,
+				train_loss=sum(train_losses) / max(1, len(train_losses)),
+				eval_loss=eval_loss,
+				perplexity=perplexity,
+				uploaded_bytes=round_uploaded_bytes,
+				cumulative_uploaded_bytes=cumulative_uploaded_bytes,
+			)
+			history.append(metrics)
+			# Per-round progress so long runs are visibly alive (flush for notebooks).
+			print(
+				f"[round {round_index}/{self.config.rounds}] "
+				f"train_loss={metrics.train_loss:.4f} "
+				f"eval_loss={metrics.eval_loss:.4f} "
+				f"ppl={metrics.perplexity:.2f}",
+				flush=True,
 			)
 
 		return history
