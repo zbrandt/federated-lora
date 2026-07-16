@@ -7,6 +7,19 @@ The current first pass implements two methods:
 - `fedit`: FedAvg-style averaging of the full LoRA adapter state.
 - `ffa`: FFA-LoRA-style training where `lora_A` stays frozen on the client and only `lora_B` is communicated.
 
+## Structured comparison
+
+| Aspect | FedIT | FFA-LoRA |
+|---|---|---|
+| Problem it tries to solve | Baseline federated fine-tuning with LoRA using standard FedAvg. | Reduce aggregation error in federated LoRA and cut communication by freezing `A` and only transmitting `B`. |
+| Main assumptions | All clients use the same LoRA rank and the server can average both LoRA factors independently. | All clients share the same frozen `A` initialization, so only `B` needs to be trained and aggregated. |
+| Client heterogeneity | Does not directly handle heterogeneous ranks or client-specific adapter structure. | Does not solve rank heterogeneity, but is robust to client data heterogeneity because the shared `A` makes the communicated update exact under averaging of `B`. |
+| Privacy | Standard federated setup; no special privacy mechanism by itself. | Designed to work better under privacy noise because only one LoRA factor is trained and transmitted. |
+| Communication efficiency | Sends both LoRA factors, so communication is proportional to the full adapter state. | Sends only `B`, so communication is roughly half of the FedIT-style adapter payload. |
+| Aggregation of low-rank updates | A and B are averaged separately across clients, which can introduce cross-client interference. | `A` is fixed and shared, so averaging `B` is equivalent to averaging the resulting low-rank update for that factor. |
+
+The short version is that FedIT is the straightforward baseline, while FFA-LoRA is the first method to compare against it when you want lower communication and less aggregation noise.
+
 ## Structure
 
 - `train_lora.py`: the original single-node LoRA baseline.
@@ -88,6 +101,24 @@ Each run prints a JSON object with:
 - cumulative uploaded bytes.
 
 That output is meant to feed later plotting notebooks for perplexity-vs-round and perplexity-vs-communication curves.
+
+## Plotting results
+
+Use `plot_results.py` to turn one or more `main.py` JSON outputs into figures:
+
+```bash
+python plot_results.py fedit.json ffa.json --output-dir figures
+```
+
+The script writes these PNG files into the output directory:
+
+- `train_loss_by_round.png`
+- `eval_loss_by_round.png`
+- `perplexity_by_round.png`
+- `uploaded_bytes_by_round.png`
+- `perplexity_vs_bytes.png`
+
+If you pass both FedIT and FFA-LoRA runs, the figures will overlay the two curves so you can see the communication/performance tradeoff directly.
 
 <!-- ## Notes on the first pass
 
