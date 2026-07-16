@@ -7,6 +7,15 @@ from dataclasses import dataclass
 from statistics import mean, stdev
 from pathlib import Path
 
+# Drop any inherited backend (e.g. Colab/Jupyter sets MPLBACKEND to an inline
+# backend) so matplotlib doesn't reject it at import time in this subprocess.
+import os
+
+os.environ.pop("MPLBACKEND", None)
+
+import matplotlib
+
+matplotlib.use("Agg")  # headless: this script only writes PNGs
 import matplotlib.pyplot as plt
 
 

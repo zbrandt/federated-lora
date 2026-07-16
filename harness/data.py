@@ -23,8 +23,9 @@ def _tokenize_dataset(
 	# Tokenize, then PACK: concatenate the token stream and chop it into fixed
 	# max_length blocks. Raw WikiText lines average ~25 tokens, so training on
 	# per-line examples wastes most of each batch; packed blocks keep every
-	# training step full. Leftover tokens at the end of each map batch (< one
-	# block) are dropped.
+	# training step full. The final block of each map batch may be shorter than
+	# max_length (the collator pads within batches), so no tokens are dropped
+	# and a small client always keeps at least one example.
 	def tokenize_batch(batch: dict[str, list[str]]) -> dict[str, list[list[int]]]:
 		return tokenizer(batch[text_field])
 
@@ -32,14 +33,13 @@ def _tokenize_dataset(
 
 	def pack_batch(batch: dict[str, list[list[int]]]) -> dict[str, list[list[int]]]:
 		token_stream = list(itertools.chain.from_iterable(batch["input_ids"]))
-		usable_length = (len(token_stream) // max_length) * max_length
 		blocks = [
 			token_stream[start : start + max_length]
-			for start in range(0, usable_length, max_length)
+			for start in range(0, len(token_stream), max_length)
 		]
 		return {
 			"input_ids": blocks,
-			"attention_mask": [[1] * max_length for _ in blocks],
+			"attention_mask": [[1] * len(block) for block in blocks],
 		}
 
 	return tokenized.map(
