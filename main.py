@@ -5,8 +5,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from config import Config
-from server import Server
+from harness.config import Config
+from harness.server import Server
 
 def parse_args() -> argparse.Namespace:
     """Parse arguments from command line interface for the harness."""
