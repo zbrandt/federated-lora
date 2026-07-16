@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import defaultdict
 from dataclasses import dataclass
+from statistics import mean, stdev
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -34,29 +36,95 @@ def load_run(path: Path) -> RunData:
     return RunData(label=label, config=config, history=history)
 
 
-def series(run: RunData, key: str) -> list[float]:
+def group_runs_by_label(runs: list[RunData]) -> dict[str, list[RunData]]:
+    grouped: dict[str, list[RunData]] = defaultdict(list)
+    for run in runs:
+        grouped[run.label].append(run)
+    return grouped
+
+
+def metric_values(run: RunData, key: str) -> list[float]:
     return [float(entry[key]) for entry in run.history]
 
 
-def round_numbers(run: RunData) -> list[int]:
-    return [int(entry["round_index"]) for entry in run.history]
+def align_series(runs: list[RunData], key: str) -> tuple[list[int], list[float], list[float]]:
+    if not runs:
+        return [], [], []
+
+    max_rounds = max(len(run.history) for run in runs)
+    x_values: list[int] = []
+    means: list[float] = []
+    stds: list[float] = []
+
+    for round_index in range(max_rounds):
+        values = [metric_values(run, key)[round_index] for run in runs if len(run.history) > round_index]
+        x_values.append(round_index + 1)
+        means.append(mean(values))
+        stds.append(stdev(values) if len(values) > 1 else 0.0)
+
+    return x_values, means, stds
 
 
-def make_line_plot(
+def align_bytes_vs_metric(runs: list[RunData], x_key: str, y_key: str) -> tuple[list[float], list[float], list[float]]:
+    if not runs:
+        return [], [], []
+
+    max_rounds = max(len(run.history) for run in runs)
+    x_values: list[float] = []
+    means: list[float] = []
+    stds: list[float] = []
+
+    for round_index in range(max_rounds):
+        xs = [float(run.history[round_index][x_key]) for run in runs if len(run.history) > round_index]
+        ys = [float(run.history[round_index][y_key]) for run in runs if len(run.history) > round_index]
+        x_values.append(mean(xs))
+        means.append(mean(ys))
+        stds.append(stdev(ys) if len(ys) > 1 else 0.0)
+
+    return x_values, means, stds
+
+
+def plot_metric_by_round(
     runs: list[RunData],
-    x_getter,
-    y_getter,
+    metric_key: str,
     title: str,
-    x_label: str,
     y_label: str,
     output_path: Path,
 ) -> None:
     plt.figure(figsize=(8, 5))
-    for run in runs:
-        plt.plot(x_getter(run), y_getter(run), marker="o", linewidth=2, label=run.label)
+    for label, label_runs in group_runs_by_label(runs).items():
+        x_values, y_values, y_stds = align_series(label_runs, metric_key)
+        plt.plot(x_values, y_values, marker="o", linewidth=2, label=label)
+        if any(y_stds):
+            lower = [value - spread for value, spread in zip(y_values, y_stds, strict=True)]
+            upper = [value + spread for value, spread in zip(y_values, y_stds, strict=True)]
+            plt.fill_between(x_values, lower, upper, alpha=0.15)
     plt.title(title)
-    plt.xlabel(x_label)
+    plt.xlabel("Round")
     plt.ylabel(y_label)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+
+
+def plot_perplexity_vs_bytes(
+    runs: list[RunData],
+    title: str,
+    output_path: Path,
+) -> None:
+    plt.figure(figsize=(8, 5))
+    for label, label_runs in group_runs_by_label(runs).items():
+        x_values, y_values, y_stds = align_bytes_vs_metric(label_runs, "cumulative_uploaded_bytes", "perplexity")
+        plt.plot(x_values, y_values, marker="o", linewidth=2, label=label)
+        if any(y_stds):
+            lower = [value - spread for value, spread in zip(y_values, y_stds, strict=True)]
+            upper = [value + spread for value, spread in zip(y_values, y_stds, strict=True)]
+            plt.fill_between(x_values, lower, upper, alpha=0.15)
+    plt.title(title)
+    plt.xlabel("Cumulative uploaded bytes")
+    plt.ylabel("Perplexity")
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
@@ -71,51 +139,11 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    make_line_plot(
-        runs,
-        round_numbers,
-        lambda run: series(run, "train_loss"),
-        "Training Loss by Round",
-        "Round",
-        "Train loss",
-        output_dir / "train_loss_by_round.png",
-    )
-    make_line_plot(
-        runs,
-        round_numbers,
-        lambda run: series(run, "eval_loss"),
-        "Validation Loss by Round",
-        "Round",
-        "Validation loss",
-        output_dir / "eval_loss_by_round.png",
-    )
-    make_line_plot(
-        runs,
-        round_numbers,
-        lambda run: series(run, "perplexity"),
-        "Perplexity by Round",
-        "Round",
-        "Perplexity",
-        output_dir / "perplexity_by_round.png",
-    )
-    make_line_plot(
-        runs,
-        round_numbers,
-        lambda run: series(run, "uploaded_bytes"),
-        "Uploaded Bytes by Round",
-        "Round",
-        "Uploaded bytes",
-        output_dir / "uploaded_bytes_by_round.png",
-    )
-    make_line_plot(
-        runs,
-        lambda run: series(run, "cumulative_uploaded_bytes"),
-        lambda run: series(run, "perplexity"),
-        "Perplexity vs Cumulative Communication",
-        "Cumulative uploaded bytes",
-        "Perplexity",
-        output_dir / "perplexity_vs_bytes.png",
-    )
+    plot_metric_by_round(runs, "train_loss", "Training Loss by Round", "Train loss", output_dir / "train_loss_by_round.png")
+    plot_metric_by_round(runs, "eval_loss", "Validation Loss by Round", "Validation loss", output_dir / "eval_loss_by_round.png")
+    plot_metric_by_round(runs, "perplexity", "Perplexity by Round", "Perplexity", output_dir / "perplexity_by_round.png")
+    plot_metric_by_round(runs, "uploaded_bytes", "Uploaded Bytes by Round", "Uploaded bytes", output_dir / "uploaded_bytes_by_round.png")
+    plot_perplexity_vs_bytes(runs, "Perplexity vs Cumulative Communication", output_dir / "perplexity_vs_bytes.png")
 
     print(f"Wrote figures to {output_dir.resolve()}")
 
