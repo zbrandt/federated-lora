@@ -6,11 +6,11 @@ import torch
 from peft import LoraConfig, TaskType, get_peft_model, set_peft_model_state_dict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from aggregate import FFAAvg, FedITAvg
-from client import Client, configure_trainable_lora_parameters, extract_adapter_state
-from config import Config
-from data import load_datasets
-from eval import evaluate_perplexity
+from harness.aggregate import FFAAvg, FedITAvg
+from harness.client import Client, configure_trainable_lora_parameters, extract_adapter_state
+from harness.config import Config
+from harness.data import load_datasets
+from harness.eval import evaluate_perplexity
 
 
 @dataclass(slots=True)

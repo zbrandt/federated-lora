@@ -3,7 +3,7 @@ from __future__ import annotations
 from datasets import Dataset, load_dataset
 from transformers import PreTrainedTokenizerBase
 
-from config import Config
+from harness.config import Config
 
 
 def _filter_empty_text(dataset: Dataset, text_field: str) -> Dataset:

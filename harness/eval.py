@@ -7,7 +7,7 @@ from datasets import Dataset
 from torch.utils.data import DataLoader
 from transformers import DataCollatorForLanguageModeling, PreTrainedModel, PreTrainedTokenizerBase
 
-from config import Config
+from harness.config import Config
 
 
 def evaluate_perplexity(

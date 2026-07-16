@@ -24,12 +24,12 @@ The short version is that FedIT is the straightforward baseline, while FFA-LoRA 
 
 - `train_lora.py`: the original single-node LoRA baseline.
 - `main.py`: command-line entry point for the federated harness.
-- `config.py`: dataclass for model, dataset, LoRA, and federation settings.
-- `data.py`: dataset loading, tokenization, and client sharding.
-- `client.py`: local client training loop and adapter-state handling.
-- `aggregate.py`: weighted averaging of client adapter states.
-- `server.py`: federated round orchestration.
-- `eval.py`: validation loss and perplexity evaluation.
+- `harness/config.py`: dataclass for model, dataset, LoRA, and federation settings.
+- `harness/data.py`: dataset loading, tokenization, and client sharding.
+- `harness/client.py`: local client training loop and adapter-state handling.
+- `harness/aggregate.py`: weighted averaging of client adapter states.
+- `harness/server.py`: federated round orchestration.
+- `harness/eval.py`: validation loss and perplexity evaluation.
 
 ## Requirements
 

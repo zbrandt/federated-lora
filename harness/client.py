@@ -9,7 +9,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import DataCollatorForLanguageModeling, PreTrainedModel, PreTrainedTokenizerBase
 
-from config import Config
+from harness.config import Config
 
 
 def configure_trainable_lora_parameters(model: PreTrainedModel, method: str) -> None:
