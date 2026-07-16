@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 from datasets import Dataset, load_dataset
 from transformers import PreTrainedTokenizerBase
@@ -18,11 +20,34 @@ def _tokenize_dataset(
 	max_length: int,
 	text_field: str,
 ) -> Dataset:
-	# Tokenize the text column into GPT-2-sized language-model examples.
+	# Tokenize, then PACK: concatenate the token stream and chop it into fixed
+	# max_length blocks. Raw WikiText lines average ~25 tokens, so training on
+	# per-line examples wastes most of each batch; packed blocks keep every
+	# training step full. Leftover tokens at the end of each map batch (< one
+	# block) are dropped.
 	def tokenize_batch(batch: dict[str, list[str]]) -> dict[str, list[list[int]]]:
-		return tokenizer(batch[text_field], truncation=True, max_length=max_length)
+		return tokenizer(batch[text_field])
 
-	return dataset.map(tokenize_batch, batched=True, remove_columns=dataset.column_names)
+	tokenized = dataset.map(tokenize_batch, batched=True, remove_columns=dataset.column_names)
+
+	def pack_batch(batch: dict[str, list[list[int]]]) -> dict[str, list[list[int]]]:
+		token_stream = list(itertools.chain.from_iterable(batch["input_ids"]))
+		usable_length = (len(token_stream) // max_length) * max_length
+		blocks = [
+			token_stream[start : start + max_length]
+			for start in range(0, usable_length, max_length)
+		]
+		return {
+			"input_ids": blocks,
+			"attention_mask": [[1] * max_length for _ in blocks],
+		}
+
+	return tokenized.map(
+		pack_batch,
+		batched=True,
+		batch_size=1000,
+		remove_columns=tokenized.column_names,
+	)
 
 
 def _is_article_heading(text: str) -> bool:
