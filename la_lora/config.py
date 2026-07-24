@@ -14,6 +14,7 @@ GLUE_TASKS = {
 # TODO: figure out how dataclass works
 @dataclass(slots=True)
 class Config:
+    method: str = "lalora"              # label only, names the output file and the plot legend
     model_name: str = "roberta-base"    # https://huggingface.co/FacebookAI/roberta-base
     dataset_name: str = "nyu-mll/glue"  # https://huggingface.co/datasets/nyu-mll/glue
     dataset_task: str = "sst2"          # sentences from movie reviews and human annotations of their sentiment
@@ -40,7 +41,8 @@ class Config:
     target_modules: tuple[str, ...] = ("query", "value")    # TODO: figure out what this is
     train_classifier_head: bool = True                      # TODO: figure out how original paper trained classifier head
 
-    output: str | None = None
+    results_dir: str = "results"        # runs auto-save in this directory as <method>_<task>_seed<seed>.json
+    output: str | None = None           # explicit path override, ignores results_dir naming when set
 
     @property
     def text_fields(self) -> tuple[str, str | None]:
@@ -56,7 +58,19 @@ class Config:
 
     @classmethod
     def from_argv(cls, argv: list[str] | None = None) -> "Config":
+        defaults = cls()
         parser = argparse.ArgumentParser(prog="la_lora")
-        parser.add_argument("--task", choices=list(GLUE_TASKS), default="sst2")
+        parser.add_argument("--method", default=defaults.method,
+                            help="run label used for the output filename and plot legend")
+        parser.add_argument("--task", choices=list(GLUE_TASKS), default=defaults.dataset_task)
+        parser.add_argument("--seed", type=int, default=defaults.seed,
+                            help="random number generator seed for mean and standard deviation bands")
+        parser.add_argument("--results-dir", default=defaults.results_dir,
+                            help="directory where the run output is written to")
         args = parser.parse_args(argv)
-        return cls(dataset_task=args.task)
+        return cls(
+            method=args.method,
+            dataset_task=args.task,
+            seed=args.seed,
+            results_dir=args.results_dir,
+        )

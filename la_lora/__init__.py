@@ -65,8 +65,9 @@ def run(argv: list[str] | None = None) -> dict:
     Run the LA-LoRA method.
 
     Get the configuration of the hyperparameters from argument parsers, 
-    instantiate and run the server from the configuration. Print or save to a 
-    specified directory the results from training and evaluation.
+    instantiate and run the server from the configuration. Saves results to 
+    specified or default result directory indexed by method name (label only),
+    GLUE benchmark task, and seed.
 
     Parameters
     ----------
@@ -86,8 +87,10 @@ def run(argv: list[str] | None = None) -> dict:
 
     if config.output:
         path = Path(config.output)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(result, indent=2), encoding="utf-8")
     else:
-        print(json.dumps(result, indent=2))
+        path = Path(config.results_dir) / f"{config.method}_{config.dataset_task}_seed{config.seed}.json"
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print(f"[la_lora] wrote {path}", flush=True)
     return result
