@@ -156,6 +156,7 @@ specifically meant to rule that mechanism out.
 
 ## Roadmap
 
+<<<<<<< HEAD
 - **LA-LoRA's smoothing filter.** The optional Gaussian low-pass filter from
   LA-LoRA's roadmap is specific to that method's alternating-update noise
   profile and isn't applicable here as-is.
@@ -165,6 +166,13 @@ specifically meant to rule that mechanism out.
   round have lower rank. A rank-aware normalized average (dividing each
   column by the weight of only the clients whose rank covers it) would
   remove that dilution but isn't implemented.
+=======
+- **Heterogeneous per-client ranks.** Concatenation along the rank dimension
+  doesn't require every client's `A`/`B` to share the same shape, so
+  per-client ranks are a natural extension of `aggregate()` — this
+  implementation keeps a single global `lora_rank` in `Config` for parity
+  with `la_lora`, so it isn't wired up yet.
+>>>>>>> 923d0cde4afaad627fcba9105ec9ded75ff3dc70
 
 ## References
 
