@@ -38,7 +38,8 @@ def build(config: Config) -> Server:
 	"""
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-	generator = torch.Generator().manual_seed(config.seed)
+	# set the seed for generating random numbers on all devices
+	generator = torch.manual_seed(config.seed)
 
 	tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 

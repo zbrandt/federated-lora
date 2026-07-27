@@ -10,6 +10,7 @@ def client_computation(
 	selected_clients: list[Client],
 	model: PreTrainedModel,
 	global_state: dict[str, torch.Tensor],
+	round_index: int,
 ) -> tuple[list[dict[str, torch.Tensor]], list[float]]:
 	"""
 	Compute each client's local update to the global model.
@@ -26,6 +27,8 @@ def client_computation(
 	    TODO: evaluate this
 	global_state : dict[str, torch.Tensor]
 	    A dictionary of the global model's initial parameters before updating.
+	round_index : int
+		The global round index used for seeding client's data shuffles.
 
 	Returns
 	-------
@@ -36,7 +39,7 @@ def client_computation(
 	losses = []
 
 	for client in selected_clients:
-		result = client.local_update(model, global_state)
+		result = client.local_update(model, global_state, round_index)
 		states.append(result.state_dict)
 		losses.append(result.average_loss)
 

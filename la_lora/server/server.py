@@ -58,7 +58,7 @@ class Server:
 
 			# Client computation
 			states, losses = client_computation(
-				selected_clients, self.model, self.global_state
+				selected_clients, self.model, self.global_state, round_index
 			)
 
 			# Aggregation

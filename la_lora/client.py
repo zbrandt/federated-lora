@@ -35,7 +35,10 @@ class Client:
 		self.collator = collator
 
 	def local_update(
-		self, model: PreTrainedModel, adapter_state: dict[str, torch.Tensor]
+		self,
+		model: PreTrainedModel,
+		adapter_state: dict[str, torch.Tensor],
+		round_index: int,
 	) -> ClientResult:
 		"""
 		Perform a local client update.
@@ -48,14 +51,16 @@ class Client:
 		Parameters
 		----------
 		model : PreTrainedModel
-		        Model with LoRA adapters modules to train.
+		    Model with LoRA adapters modules to train.
 		adapter_state : dict[str, torch.Tensor]
-		        TODO: Figure out what this is exactly
+		    TODO: Figure out what this is exactly
+		round_index : int
+			The global round index used for seeding client's data shuffles.
 
 		Returns
 		-------
 		ClientResults
-		        TODO: Evaluate this return class
+		    TODO: Evaluate this return class
 		"""
 		model.load_state_dict(
 			adapter_state, strict=False
@@ -86,12 +91,18 @@ class Client:
 		opt_B = AdamW(lora_B, lr=self.config.lr_b)
 		opt_head = AdamW(head, lr=self.config.lr_head) if head else None
 
+		# isolate shuffle from global stream with client and round index offset
+		generator = torch.Generator().manual_seed(
+			self.config.seed + self.client_id + round_index
+		)
+
 		# combine dataset and a sampler, and provide an iterable over dataset
 		train_dataloader = DataLoader(
 			self.dataset,
 			batch_size=self.config.batch_size,  # how many samples to per batch to load
 			shuffle=True,  # data reschuffled at every epoch
 			collate_fn=self.collator,  # merges list of samples to form a mini-batch of Tensors
+			generator=generator,
 		)
 
 		batches = cycle(train_dataloader)
