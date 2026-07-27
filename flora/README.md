@@ -35,9 +35,24 @@ benchmark, using LoRA adapters injected into the attention `query` and
 
 Setting `noise_multiplier` in `Config` enables DP-FLoRA: each client trains
 under Opacus[^3] per-example DP-SGD (per-sample gradient clipping, calibrated
-Gaussian noise) instead of plain SGD, with a persistent `PrivacyEngine` kept
-on each `Client` for its whole lifetime so its `ε` accumulates correctly
+Gaussian noise) instead of plain training, with a persistent `PrivacyEngine`
+kept on each `Client` for its whole lifetime so its `ε` accumulates correctly
 across every round it is actually selected for — not just the current round.
+
+The DP path optimizes with plain SGD+momentum (`dp_lr`, `dp_momentum`), not
+`AdamW` like the rest of `Config`'s single `lr`. DP noise adds a constant bias
+to Adam's second-moment estimate, which specifically miscalibrates its
+adaptive step size for small, low-variance parameters like a rank-8 LoRA
+adapter: Adam ends up normalizing every step to roughly `lr` regardless of
+whether the underlying (noised) gradient carried any real signal, so it can't
+tell a genuine (tiny) LoRA gradient apart from pure injected noise — and with
+only `local_steps` per round before the adapter is reinitialized from scratch
+(FLoRA's merge-and-reinit), there's no time for that bias to average out
+either. This is a documented failure mode of DP-Adam, not specific to this
+codebase (see e.g. "DP-AdamBC", arXiv:2312.14334). SGD's step scales directly
+with the clipped, noised gradient instead, so it doesn't have this failure
+mode — at the cost of needing a much larger learning rate than Adam's for
+comparable progress.
 
 Clipping is per-layer, not Opacus's default flat clipping, and uses two
 separate norms — `lora_max_grad_norm` for the LoRA `A`/`B` parameters and
@@ -78,7 +93,8 @@ All hyperparameters live in the `Config` dataclass in `config.py`, mirroring
 `batch_size`, a single `lr` since FLoRA trains `A`/`B` jointly rather than
 alternately), a LoRA setup (`lora_rank`, `lora_alpha`, `lora_dropout`,
 `target_modules`, `train_classifier_head`), and a privacy setup
-(`max_grad_norm`, `lora_max_grad_norm`, `noise_multiplier`, `delta`).
+(`max_grad_norm`, `lora_max_grad_norm`, `noise_multiplier`, `delta`, `dp_lr`,
+`dp_momentum`).
 
 A subset of these is exposed on the command line; the rest are edited in
 `config.py` directly:
@@ -96,6 +112,8 @@ python main.py run --method flora --task sst2 --seed 42
 | `--noise-multiplier`  | Gaussian noise multiplier for DP-SGD; unset disables DP    |
 | `--max-grad-norm`     | per-example clipping norm for the classifier head under DP-SGD |
 | `--lora-max-grad-norm` | per-example clipping norm for the LoRA `A`/`B` parameters under DP-SGD |
+| `--dp-lr`             | SGD learning rate for the DP path                          |
+| `--dp-momentum`       | SGD momentum for the DP path                               |
 
 ## Usage
 
