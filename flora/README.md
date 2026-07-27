@@ -153,10 +153,6 @@ aggregation, and merge-and-reinit are all wired correctly.
   per-client ranks are a natural extension of `aggregate()` — this
   implementation keeps a single global `lora_rank` in `Config` for parity
   with `la_lora`, so it isn't wired up yet.
-- **LA-LoRA's smoothing filter.** The optional Gaussian low-pass filter from
-  LA-LoRA's roadmap is specific to that method's alternating-update noise
-  profile and isn't applicable here as-is; whether an analogous filter helps
-  FLoRA's merge-and-reinit step is an open question.
 
 ## References
 
