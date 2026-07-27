@@ -51,6 +51,14 @@ class Config:
                                          # (see client.py) clips each parameter to its own norm instead.
     noise_multiplier: float | None = None  # set > 0 to enable DP-FLoRA
     delta: float = 1e-5                 # only used to report accumulated epsilon spend, not as a solver target
+    dp_lr: float = 0.5                  # SGD learning rate for the DP path (see client.py for why DP uses SGD,
+                                         # not AdamW -- Adam's adaptive step size defeats DP-SGD's clipping/noise
+                                         # calibration). SGD needs a much larger LR than Adam for the same
+                                         # progress, since its step scales directly with the (small) clipped
+                                         # gradient instead of Adam's ~lr-normalized-regardless-of-magnitude step.
+    dp_momentum: float = 0.9            # SGD momentum for the DP path; averages the noised gradient across
+                                         # steps within a round, similar to Adam's first moment but without
+                                         # Adam's problematic (noise-biased) second-moment normalization
 
     results_dir: str = "results"        # runs auto-save in this directory as <method>_<task>_seed<seed>.json
     output: str | None = None           # explicit path override, ignores results_dir naming when set
@@ -89,6 +97,10 @@ class Config:
                             help="per-example gradient clipping norm for the classifier head under DP-SGD")
         parser.add_argument("--lora-max-grad-norm", type=float, default=defaults.lora_max_grad_norm,
                             help="per-example gradient clipping norm for the LoRA A/B parameters under DP-SGD")
+        parser.add_argument("--dp-lr", type=float, default=defaults.dp_lr,
+                            help="SGD learning rate used for the DP path (DP-SGD uses SGD, not AdamW)")
+        parser.add_argument("--dp-momentum", type=float, default=defaults.dp_momentum,
+                            help="SGD momentum used for the DP path")
         args = parser.parse_args(argv)
         return cls(
             method=args.method,
@@ -98,4 +110,6 @@ class Config:
             noise_multiplier=args.noise_multiplier,
             max_grad_norm=args.max_grad_norm,
             lora_max_grad_norm=args.lora_max_grad_norm,
+            dp_lr=args.dp_lr,
+            dp_momentum=args.dp_momentum,
         )

@@ -5,7 +5,7 @@ from itertools import cycle
 
 import torch
 from datasets import Dataset
-from torch.optim import AdamW
+from torch.optim import SGD, AdamW, Optimizer
 from torch.utils.data import DataLoader
 from transformers import DataCollatorWithPadding, PreTrainedModel
 
@@ -67,8 +67,6 @@ class Client:
 		for parameter in (*lora_params, *head):
 			parameter.requires_grad = True
 
-		optimizer = AdamW([*lora_params, *head], lr=self.config.lr)
-
 		train_dataloader = DataLoader(
 			self.dataset,
 			batch_size=self.config.batch_size,
@@ -77,8 +75,21 @@ class Client:
 		)
 
 		if self.config.use_dp:
+			# Plain SGD (+momentum), not AdamW, for the DP path. DP noise adds a
+			# constant bias to Adam's second-moment estimate, which miscalibrates
+			# its adaptive step size specifically for small, low-variance
+			# parameters like a rank-8 LoRA adapter -- Adam ends up normalizing
+			# every step to ~lr regardless of whether the underlying (noised)
+			# gradient carried any real signal, so it can't tell a genuine
+			# (tiny) LoRA gradient apart from pure injected noise. With only
+			# `local_steps` per round before the adapter is reinitialized from
+			# scratch (see server/update.py), there's no time for that bias to
+			# wash out either. SGD's step scales directly with the clipped,
+			# noised gradient, so it doesn't have this failure mode.
+			optimizer = SGD([*lora_params, *head], lr=self.config.dp_lr, momentum=self.config.dp_momentum)
 			total_loss, epsilon_spent = self._local_update_dp(model, optimizer, train_dataloader, lora_params, head)
 		else:
+			optimizer = AdamW([*lora_params, *head], lr=self.config.lr)
 			total_loss = self._local_update_plain(model, optimizer, train_dataloader)
 			epsilon_spent = None
 
@@ -97,7 +108,7 @@ class Client:
 			epsilon_spent=epsilon_spent,
 		)
 
-	def _local_update_plain(self, model: PreTrainedModel, optimizer: AdamW, train_dataloader: DataLoader) -> float:
+	def _local_update_plain(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> float:
 		batches = cycle(train_dataloader)
 		total_loss = 0.0
 		for _ in range(self.config.local_steps):
@@ -115,7 +126,7 @@ class Client:
 	def _local_update_dp(
 			self,
 			model: PreTrainedModel,
-			optimizer: AdamW,
+			optimizer: Optimizer,
 			train_dataloader: DataLoader,
 			lora_params: list[torch.nn.Parameter],
 			head: list[torch.nn.Parameter],
