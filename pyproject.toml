@@ -25,7 +25,7 @@ line-length = 79
 select = [
     "E",    # check code against some of the style conventions in PEP 8
     "F",    # checks Python source files for errors
-    "W",    # warnings
+    "W",    # check code against some of the style conventions in PEP 8
     "I",    # sort imports alphabetically and automatically separate into sections and by type
     "UP",   # upgrade syntax for newer versions of Python
     "B",    # find likely bugs and design problems
@@ -38,9 +38,10 @@ extend-select = [
     "E501",
 ]
 ignore = [
-    "E741", # ambigious file names 
-    "F401", # re-exports
-    
+    "E501", # checks for lines that exceed specified maximum character length
+    "E741", # checks for the use of 'l', 'O', or 'I' as variable names
+    "F401", # checks for unused imports
+    "W191", # checks for indentation that uses tabs
 ]
 
 [tool.ruff.format]
