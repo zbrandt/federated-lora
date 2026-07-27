@@ -21,6 +21,7 @@ This project can simulate approaches to applying LoRA in federated learning for
 fine-tuning large language models, including:
 
 - [LaLoRA](la_lora/README.md)
+- [FLoRA](flora/README.md)
 
 ## Setup
 

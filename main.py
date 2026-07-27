@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+
+
+METHOD_PACKAGES = {
+    "lalora": "la_lora",
+    "flora": "flora",
+}
 
 
 def main() -> None:
@@ -21,10 +28,16 @@ def main() -> None:
 
     args, run_argv = parser.parse_known_args()
 
-    # TODO: run only works for LA-LoRA
     if args.command == "run":
-        from la_lora import run
-        run(run_argv)
+        method_parser = argparse.ArgumentParser(add_help=False)
+        method_parser.add_argument("--method", default="lalora")
+        method_args, _ = method_parser.parse_known_args(run_argv)
+
+        package = METHOD_PACKAGES.get(method_args.method)
+        if package is None:
+            raise SystemExit(f"Unknown method '{method_args.method}'. Available: {sorted(METHOD_PACKAGES)}")
+
+        importlib.import_module(package).run(run_argv)
     elif args.command == "plot":
         import plot_results
         plot_results.plot(args.inputs, args.output_dir)
