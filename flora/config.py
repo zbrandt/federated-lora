@@ -40,7 +40,15 @@ class Config:
     train_classifier_head: bool = True
 
     # Differential privacy (optional; None => plain FLoRA)
-    max_grad_norm: float = 1.0          # per-example gradient clipping norm for Opacus DP-SGD
+    max_grad_norm: float = 1.0          # per-example gradient clipping norm for the classifier head under Opacus DP-SGD
+    lora_max_grad_norm: float = 0.1     # separate (smaller) per-example clipping norm for the LoRA A/B parameters --
+                                         # their raw gradients are naturally far smaller than the classifier head's
+                                         # (attenuated by the frozen encoder), so Opacus's default "flat" clipping,
+                                         # which computes ONE combined norm across every trainable tensor and applies
+                                         # that single clip factor to all of them, lets the head's much larger
+                                         # per-example norm dictate the factor for the adapter too -- crushing its
+                                         # already-tiny gradient before noise is even added. Per-layer clipping
+                                         # (see client.py) clips each parameter to its own norm instead.
     noise_multiplier: float | None = None  # set > 0 to enable DP-FLoRA
     delta: float = 1e-5                 # only used to report accumulated epsilon spend, not as a solver target
 
@@ -78,7 +86,9 @@ class Config:
         parser.add_argument("--noise-multiplier", type=float, default=defaults.noise_multiplier,
                             help="Gaussian noise multiplier for DP-SGD; unset disables DP (plain FLoRA)")
         parser.add_argument("--max-grad-norm", type=float, default=defaults.max_grad_norm,
-                            help="per-example gradient clipping norm under DP-SGD")
+                            help="per-example gradient clipping norm for the classifier head under DP-SGD")
+        parser.add_argument("--lora-max-grad-norm", type=float, default=defaults.lora_max_grad_norm,
+                            help="per-example gradient clipping norm for the LoRA A/B parameters under DP-SGD")
         args = parser.parse_args(argv)
         return cls(
             method=args.method,
@@ -87,4 +97,5 @@ class Config:
             results_dir=args.results_dir,
             noise_multiplier=args.noise_multiplier,
             max_grad_norm=args.max_grad_norm,
+            lora_max_grad_norm=args.lora_max_grad_norm,
         )
