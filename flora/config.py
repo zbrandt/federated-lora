@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 GLUE_TASKS = {
@@ -61,8 +61,7 @@ class Config:
     # None => DP disabled. If set, must have exactly `num_clients` entries;
     # per-entry `None` disables DP for that specific client while others
     # keep it enabled.
-    # client_epsilons: list[float | None] | None = None
-    client_epsilons: list[float | None] = [8.0] * 20   # must match num_clients; None per-entry = that client stays non-private
+    client_epsilons: list[float | None] | None = field(default_factory=lambda: [8.0] * 20)   # must match num_clients; None per-entry = that client stays non-private
     delta: float = 1e-5                 # per-example clipping norm (C), flat across  DP accounting target delta
     max_grad_norm: float = 1.0          #B + classifier head
     dp_lr: float = 1e-3                 # AdamW learning rate for the DP path (larger than `lr` to help
