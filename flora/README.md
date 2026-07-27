@@ -34,11 +34,23 @@ benchmark, using LoRA adapters injected into the attention `query` and
 ## Differential privacy (DP-FLoRA)
 
 Setting `noise_multiplier` in `Config` enables DP-FLoRA: each client trains
-under Opacus[^3] per-example DP-SGD (per-sample gradient clipping to
-`max_grad_norm`, calibrated Gaussian noise) instead of plain SGD, with a
-persistent `PrivacyEngine` kept on each `Client` for its whole lifetime so its
-`ε` accumulates correctly across every round it is actually selected for —
-not just the current round.
+under Opacus[^3] per-example DP-SGD (per-sample gradient clipping, calibrated
+Gaussian noise) instead of plain SGD, with a persistent `PrivacyEngine` kept
+on each `Client` for its whole lifetime so its `ε` accumulates correctly
+across every round it is actually selected for — not just the current round.
+
+Clipping is per-layer, not Opacus's default flat clipping, and uses two
+separate norms — `lora_max_grad_norm` for the LoRA `A`/`B` parameters and
+`max_grad_norm` for the classifier head. Flat clipping computes one combined
+per-example norm across *every* trainable tensor and applies that single clip
+factor to all of them; since the classifier head sits directly on the loss,
+its per-example gradients are naturally much larger than the LoRA adapter's
+(attenuated by the frozen encoder), so a shared flat norm lets the head
+dictate the clip factor for the adapter too — crushing its already-tiny
+gradient before noise is even added, so the adapter never trains and only
+ever sees the injected noise. Per-layer clipping gives the adapter its own,
+much smaller, norm so its (already small) true gradient isn't clipped away
+and stays above the noise floor.
 
 This uses `noise_multiplier` as the primary privacy knob rather than solving
 for a target `epsilon` up front (`make_private_with_epsilon`), because in a
@@ -66,7 +78,7 @@ All hyperparameters live in the `Config` dataclass in `config.py`, mirroring
 `batch_size`, a single `lr` since FLoRA trains `A`/`B` jointly rather than
 alternately), a LoRA setup (`lora_rank`, `lora_alpha`, `lora_dropout`,
 `target_modules`, `train_classifier_head`), and a privacy setup
-(`max_grad_norm`, `noise_multiplier`, `delta`).
+(`max_grad_norm`, `lora_max_grad_norm`, `noise_multiplier`, `delta`).
 
 A subset of these is exposed on the command line; the rest are edited in
 `config.py` directly:
@@ -82,7 +94,8 @@ python main.py run --method flora --task sst2 --seed 42
 | `--seed`              | RNG seed for partitioning, selection, and reinitialization |
 | `--results-dir`       | directory the run JSON is written to                      |
 | `--noise-multiplier`  | Gaussian noise multiplier for DP-SGD; unset disables DP    |
-| `--max-grad-norm`     | per-example gradient clipping norm under DP-SGD            |
+| `--max-grad-norm`     | per-example clipping norm for the classifier head under DP-SGD |
+| `--lora-max-grad-norm` | per-example clipping norm for the LoRA `A`/`B` parameters under DP-SGD |
 
 ## Usage
 
