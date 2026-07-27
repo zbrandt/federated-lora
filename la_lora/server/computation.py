@@ -10,7 +10,7 @@ def client_computation(
 	selected_clients: list[Client],
 	model: PreTrainedModel,
 	global_state: dict[str, torch.Tensor],
-) -> tuple[list[dict[str, torch.Tensor]], list[float], int]:
+) -> tuple[list[dict[str, torch.Tensor]], list[float]]:
 	"""
 	Compute each client's local update to the global model.
 
@@ -30,17 +30,14 @@ def client_computation(
 	Returns
 	-------
 	tuple[list[dict[str, torch.Tensor]], list[float], int]
-	    A tuple of states, losses, and uploaded bytes logs from all the client
-	    updates.
+	    A tuple of states and losses from all the client updates.
 	"""
 	states = []
 	losses = []
-	uploaded = 0
 
 	for client in selected_clients:
 		result = client.local_update(model, global_state)
 		states.append(result.state_dict)
 		losses.append(result.average_loss)
-		uploaded += result.uploaded_bytes
 
-	return (states, losses, uploaded)
+	return (states, losses)

@@ -16,9 +16,7 @@ from la_lora.config import Config
 class ClientResult:
 	state_dict: dict[str, torch.Tensor]
 	n_examples: int
-	n_tokens: int
 	average_loss: float
-	uploaded_bytes: int
 
 
 class Client:
@@ -137,7 +135,5 @@ class Client:
 		return ClientResult(
 			state_dict=updated_state,
 			n_examples=len(self.dataset),
-			n_tokens=total_tokens,
 			average_loss=total_loss / self.config.local_steps,
-			uploaded_bytes=0,
 		)

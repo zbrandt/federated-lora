@@ -17,8 +17,6 @@ class RoundMetrics:
 	train_loss: float
 	eval_loss: float
 	accuracy: float
-	uploaded_bytes: int
-	cumulative_uploaded_bytes: int
 
 
 class Server:
@@ -48,7 +46,6 @@ class Server:
 	def run(self) -> list[RoundMetrics]:
 		""" """
 		history: list[RoundMetrics] = []
-		cumulative = 0
 
 		for round_index in range(1, self.config.rounds + 1):
 			# Client selection
@@ -60,7 +57,7 @@ class Server:
 			broadcast(self.model, self.global_state)
 
 			# Client computation
-			states, losses, uploaded = client_computation(
+			states, losses = client_computation(
 				selected_clients, self.model, self.global_state
 			)
 
@@ -82,14 +79,11 @@ class Server:
 				self.device,
 			)
 
-			cumulative += uploaded
 			metrics = RoundMetrics(
 				round_index=round_index,
 				train_loss=sum(losses) / max(1, len(losses)),
 				eval_loss=eval_loss,
 				accuracy=accuracy,
-				uploaded_bytes=uploaded,
-				cumulative_uploaded_bytes=cumulative,
 			)
 			history.append(metrics)
 
