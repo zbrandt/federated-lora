@@ -10,13 +10,14 @@ def client_computation(
         selected_clients: list[Client],
         model: PreTrainedModel,
         global_state: dict[str, torch.Tensor],
-    ) -> tuple[list[dict[str, torch.Tensor]], list[float], int, list[float | None]]:
+    ) -> tuple[list[dict[str, torch.Tensor]], list[float], list[int], int, list[float | None]]:
     """
     Compute each client's local update to the global model.
 
     Iterate over selected clients and call their local update method. Record
-    each client's update state, loss, and (if DP is enabled) accumulated
-    epsilon spend for later aggregation/logging.
+    each client's update state, loss, aggregation weight (`n_examples`),
+    uploaded bytes, and (if that client has DP enabled) accumulated epsilon
+    spend for later aggregation/logging.
 
     Parameters
     ----------
@@ -30,12 +31,14 @@ def client_computation(
 
     Returns
     -------
-    tuple[list[dict[str, torch.Tensor]], list[float], int, list[float | None]]
-        A tuple of states, losses, uploaded bytes, and per-client epsilon
-        spend (`None` entries when DP is off) from all the client updates.
+    tuple[list[dict[str, torch.Tensor]], list[float], list[int], int, list[float | None]]
+        A tuple of states, losses, aggregation weights, uploaded bytes, and
+        per-client epsilon spend (`None` entries when that client's DP is
+        off) from all the client updates.
     """
     states = []
     losses = []
+    weights = []
     uploaded = 0
     epsilons: list[float | None] = []
 
@@ -43,7 +46,8 @@ def client_computation(
         result = client.local_update(model, global_state)
         states.append(result.state_dict)
         losses.append(result.average_loss)
+        weights.append(result.n_examples)
         uploaded += result.uploaded_bytes
         epsilons.append(result.epsilon_spent)
 
-    return (states, losses, uploaded, epsilons)
+    return (states, losses, weights, uploaded, epsilons)

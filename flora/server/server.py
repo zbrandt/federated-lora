@@ -8,7 +8,6 @@ from flora.server.selection import select_clients
 from flora.server.broadcast import broadcast
 from flora.server.aggregate import aggregate
 from flora.server.computation import client_computation
-from flora.server.update import update_model
 
 
 @dataclass(slots=True)
@@ -31,11 +30,10 @@ class Server:
 		self.tokenizer = tokenizer
 		self.device = device
 		self.generator = generator
-		self.scaling = config.lora_alpha / config.lora_rank
 		self.global_state = {
 			key: value.detach().cpu().clone()
 			for key, value in model.state_dict().items()
-			if "lora_" in key or "modules_to_save" in key
+			if key.endswith(".B.weight") or "classifier" in key
 		}
 
 	def run(self) -> list[RoundMetrics]:
@@ -50,13 +48,14 @@ class Server:
 			broadcast(self.model, self.global_state)
 
 			# Client computation
-			states, losses, uploaded, epsilons = client_computation(selected_clients, self.model, self.global_state)
+			states, losses, weights, uploaded, epsilons = client_computation(selected_clients, self.model, self.global_state)
 
-			# Aggregation (FLoRA: exact stacking, not FedAvg)
-			aggregated = aggregate(states, self.scaling)
-
-			# Model update: fold the stacked delta into the base weights, reinit fresh adapters
-			self.global_state = update_model(self.model, aggregated, self.generator)
+			# Aggregation: FFA-LoRA's frozen, shared A makes plain weighted
+			# FedAvg on B exact (see server/aggregate.py) -- this directly
+			# becomes the next round's global state, no merge-into-base
+			# -weights/reinit step needed (unlike FLoRA's stacking design,
+			# there's no rank growth here to reset).
+			self.global_state = aggregate(states, weights)
 
 			self.model.load_state_dict(self.global_state, strict=False)
 
