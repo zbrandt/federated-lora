@@ -87,7 +87,7 @@ class Client:
 			# wash out either. SGD's step scales directly with the clipped,
 			# noised gradient, so it doesn't have this failure mode.
 			optimizer = SGD([*lora_params, *head], lr=self.config.dp_lr, momentum=self.config.dp_momentum)
-			total_loss, epsilon_spent = self._local_update_dp(model, optimizer, train_dataloader, lora_params, head)
+			total_loss, epsilon_spent = self._local_update_dp(model, optimizer, train_dataloader)
 		else:
 			optimizer = AdamW([*lora_params, *head], lr=self.config.lr)
 			total_loss = self._local_update_plain(model, optimizer, train_dataloader)
@@ -123,14 +123,7 @@ class Client:
 
 		return total_loss
 
-	def _local_update_dp(
-			self,
-			model: PreTrainedModel,
-			optimizer: Optimizer,
-			train_dataloader: DataLoader,
-			lora_params: list[torch.nn.Parameter],
-			head: list[torch.nn.Parameter],
-		) -> tuple[float, float]:
+	def _local_update_dp(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, float]:
 		"""
 		Train under Opacus per-example DP-SGD.
 
@@ -142,17 +135,16 @@ class Client:
 		privacy spend across every round this client has participated in --
 		exactly the composition guarantee a federated DP client needs.
 
-		Clipping is done per-parameter (`clipping="per_layer"`), not Opacus's
-		default flat clipping. Flat clipping computes ONE combined per-example
-		norm across every trainable tensor and applies that single clip factor
-		to all of them; since the classifier head sits directly on the loss its
-		per-example gradients are naturally much larger than the LoRA A/B
-		gradients (attenuated by the frozen encoder), so a shared flat norm lets
-		the head dictate the clip factor for the adapter too, crushing its
-		already-tiny gradient before noise is even added -- the adapter then
-		never receives a usable signal and only ever sees the injected noise.
-		Per-layer clipping gives the adapter its own (smaller) clip norm via
-		`config.lora_max_grad_norm`, independent of the head's.
+		Uses Opacus's default flat clipping: ONE combined per-example norm
+		across every trainable tensor (`config.max_grad_norm`), clipped and
+		noised together. (`clipping="per_layer"` was tried instead, but
+		Opacus's `DPPerLayerOptimizer` collapses a list of per-parameter norms
+		into a single *aggregate* L2 value and uses that much larger number to
+		scale the noise added to every parameter -- with SGD's step scaling
+		directly with that noise, unlike Adam's normalized step, this made the
+		actually-injected noise far larger than intended and blew the weights
+		up. Flat clipping keeps the noise scale directly tied to the one
+		`max_grad_norm` value actually being tuned.)
 
 		`model` is shared across all clients (see server/computation.py), so
 		once training finishes we must strip Opacus's grad-sample hooks off it
@@ -164,18 +156,12 @@ class Client:
 		if self._privacy_engine is None:
 			self._privacy_engine = PrivacyEngine()
 
-		per_param_max_grad_norm = (
-			[self.config.lora_max_grad_norm] * len(lora_params)
-			+ [self.config.max_grad_norm] * len(head)
-		)
-
 		dp_model, dp_optimizer, dp_loader = self._privacy_engine.make_private(
 			module=model,
 			optimizer=optimizer,
 			data_loader=train_dataloader,
 			noise_multiplier=self.config.noise_multiplier,
-			max_grad_norm=per_param_max_grad_norm,
-			clipping="per_layer",
+			max_grad_norm=self.config.max_grad_norm,
 		)
 
 		batches = cycle(dp_loader)

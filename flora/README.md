@@ -54,18 +54,23 @@ with the clipped, noised gradient instead, so it doesn't have this failure
 mode — at the cost of needing a much larger learning rate than Adam's for
 comparable progress.
 
-Clipping is per-layer, not Opacus's default flat clipping, and uses two
-separate norms — `lora_max_grad_norm` for the LoRA `A`/`B` parameters and
-`max_grad_norm` for the classifier head. Flat clipping computes one combined
-per-example norm across *every* trainable tensor and applies that single clip
-factor to all of them; since the classifier head sits directly on the loss,
-its per-example gradients are naturally much larger than the LoRA adapter's
-(attenuated by the frozen encoder), so a shared flat norm lets the head
-dictate the clip factor for the adapter too — crushing its already-tiny
-gradient before noise is even added, so the adapter never trains and only
-ever sees the injected noise. Per-layer clipping gives the adapter its own,
-much smaller, norm so its (already small) true gradient isn't clipped away
-and stays above the noise floor.
+Clipping is Opacus's default flat clipping: one combined per-example norm
+(`max_grad_norm`) across every trainable tensor (LoRA `A`/`B` and the
+classifier head together), clipped and noised as a unit. Per-layer clipping
+(giving the LoRA adapter its own, smaller clip norm than the head) was tried
+here first, but Opacus's `DPPerLayerOptimizer` collapses a list of per-layer
+norms into a single *aggregate* L2 value and uses that (much larger) number to
+scale the noise added to every parameter — with SGD's step scaling directly
+with that noise, this made the actually-injected noise far larger than
+intended and diverged training outright. Flat clipping keeps the noise scale
+directly tied to the one `max_grad_norm` value being tuned, at the cost of the
+classifier head's naturally-larger per-example gradients being able to
+dominate the shared clip factor.
+
+`max_grad_norm`, `dp_lr`, and `dp_momentum`'s defaults are deliberately
+conservative starting points, not tuned values — DP-SGD's usable range for
+these depends heavily on the model, task, and batch size, so expect to sweep
+them (in particular, if training diverges, cut `dp_lr` first).
 
 This uses `noise_multiplier` as the primary privacy knob rather than solving
 for a target `epsilon` up front (`make_private_with_epsilon`), because in a
@@ -93,8 +98,7 @@ All hyperparameters live in the `Config` dataclass in `config.py`, mirroring
 `batch_size`, a single `lr` since FLoRA trains `A`/`B` jointly rather than
 alternately), a LoRA setup (`lora_rank`, `lora_alpha`, `lora_dropout`,
 `target_modules`, `train_classifier_head`), and a privacy setup
-(`max_grad_norm`, `lora_max_grad_norm`, `noise_multiplier`, `delta`, `dp_lr`,
-`dp_momentum`).
+(`max_grad_norm`, `noise_multiplier`, `delta`, `dp_lr`, `dp_momentum`).
 
 A subset of these is exposed on the command line; the rest are edited in
 `config.py` directly:
@@ -110,8 +114,7 @@ python main.py run --method flora --task sst2 --seed 42
 | `--seed`              | RNG seed for partitioning, selection, and reinitialization |
 | `--results-dir`       | directory the run JSON is written to                      |
 | `--noise-multiplier`  | Gaussian noise multiplier for DP-SGD; unset disables DP    |
-| `--max-grad-norm`     | per-example clipping norm for the classifier head under DP-SGD |
-| `--lora-max-grad-norm` | per-example clipping norm for the LoRA `A`/`B` parameters under DP-SGD |
+| `--max-grad-norm`     | per-example clipping norm (flat, across LoRA `A`/`B` and the classifier head) under DP-SGD |
 | `--dp-lr`             | SGD learning rate for the DP path                          |
 | `--dp-momentum`       | SGD momentum for the DP path                               |
 
