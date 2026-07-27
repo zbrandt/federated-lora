@@ -5,11 +5,12 @@ from itertools import cycle
 
 import torch
 from datasets import Dataset
-from torch.optim import SGD, AdamW, Optimizer
+from torch.optim import AdamW, Optimizer
 from torch.utils.data import DataLoader
 from transformers import DataCollatorWithPadding, PreTrainedModel
 
 from flora.config import Config
+from flora.lora_layer import HeterogeneousDPLoRALayer
 
 
 @dataclass(slots=True)
@@ -23,46 +24,60 @@ class ClientResult:
 
 
 class Client:
-	def __init__(self, client_id: int, dataset: Dataset, config: Config, device: torch.device, collator: DataCollatorWithPadding) -> None:
+	def __init__(
+			self,
+			client_id: int,
+			dataset: Dataset,
+			config: Config,
+			device: torch.device,
+			collator: DataCollatorWithPadding,
+			rank: int,
+			target_epsilon: float | None,
+		) -> None:
 		self.client_id = client_id
 		self.dataset = dataset
 		self.config = config
 		self.device = device
 		self.collator = collator
-		self._privacy_accountant = None  # opacus.accountants.RDPAccountant; lazily created once, reused every round so epsilon composes across rounds
+		self.rank = rank                        # this client's active LoRA rank r_i (<= config.lora_rank == r_max)
+		self.target_epsilon = target_epsilon    # this client's DP budget; None disables DP for this client
+		self._privacy_engine = None             # lazily created once, reused every round so epsilon composes across rounds
+		self._sigma = None                      # noise multiplier derived from target_epsilon; computed once, cached
 
 	def local_update(self, model: PreTrainedModel, adapter_state: dict[str, torch.Tensor]) -> ClientResult:
 		"""
-		Perform a local client update.
-
-		Unlike LA-LoRA, FLoRA trains the LoRA `A` and `B` matrices jointly with a
-		single optimizer -- there is no alternating schedule, since FLoRA's
-		exactness comes from how the server aggregates client updates (stacking),
-		not from decoupling the local gradient.
+		Perform a local client update under FFA-LoRA (Frozen-A LoRA, see
+		lora_layer.py): only `B` (per LoRA layer) and the classifier head are
+		ever trained. The shared `A_max` is frozen and never appears here --
+		not in `adapter_state`, not in the optimizer, not in DP clipping/noise.
 
 		Parameters
 		----------
 		model : PreTrainedModel
-			Model with LoRA adapter modules to train.
+			Model with HeterogeneousDPLoRALayer adapters injected.
 		adapter_state : dict[str, torch.Tensor]
-			The global adapter (and classifier head) state to train from this round.
+			The global `B` (per layer) and classifier head state to train
+			from this round.
 
 		Returns
 		-------
 		ClientResult
-			The client's updated adapter state plus loss/example/privacy bookkeeping.
+			The client's updated state plus loss/example/privacy bookkeeping.
 		"""
 		model.load_state_dict(adapter_state, strict=False)
 		model.train()
 
-		lora_params, head = [], []
-		for name, parameter in model.named_parameters():
-			if "lora_A" in name or "lora_B" in name:
-				lora_params.append(parameter)
-			elif "modules_to_save" in name:
-				head.append(parameter)
+		lora_layers: list[HeterogeneousDPLoRALayer] = []
+		lora_params: list[torch.nn.Parameter] = []
+		for module in model.modules():
+			if isinstance(module, HeterogeneousDPLoRALayer):
+				module.active_rank = self.rank
+				lora_layers.append(module)
+				lora_params.extend(module.B.parameters())
 
-		for name, parameter in model.named_parameters():
+		head = list(model.classifier.parameters()) if self.config.train_classifier_head else []
+
+		for parameter in model.parameters():
 			parameter.requires_grad = False
 		for parameter in (*lora_params, *head):
 			parameter.requires_grad = True
@@ -74,19 +89,30 @@ class Client:
 			collate_fn=self.collator,
 		)
 
-		if self.config.use_dp:
-			# Plain SGD, not AdamW -- see _local_update_dp's docstring for why.
-			optimizer = SGD([*lora_params, *head], lr=self.config.dp_lr, momentum=self.config.dp_momentum)
-			total_loss, epsilon_spent = self._local_update_dp(model, optimizer, train_dataloader, lora_params, head)
+		if self.target_epsilon is not None:
+			optimizer = AdamW([*lora_params, *head], lr=self.config.dp_lr)
+			total_loss, epsilon_spent = self._local_update_dp(model, optimizer, train_dataloader)
 		else:
 			optimizer = AdamW([*lora_params, *head], lr=self.config.lr)
 			total_loss = self._local_update_plain(model, optimizer, train_dataloader)
 			epsilon_spent = None
 
+		# See lora_layer.py's docstring: zero-padding the forward pass alone
+		# is NOT sufficient to keep inactive columns (rank r_i..r_max) at
+		# zero once DP noise is involved -- Opacus's noise is added to the
+		# whole gradient tensor unconditionally, regardless of whether the
+		# true gradient there happens to be zero. So those columns are
+		# explicitly reset here, on every path (DP or not, for consistency),
+		# before the state is extracted for upload.
+		with torch.no_grad():
+			for layer in lora_layers:
+				if self.rank < layer.r_max:
+					layer.B.weight[:, self.rank:] = 0.0
+
 		updated_state = {
 			key: value.detach().cpu().clone()
 			for key, value in model.state_dict().items()
-			if "lora_" in key or "modules_to_save" in key
+			if key.endswith(".B.weight") or "classifier" in key
 		}
 
 		return ClientResult(
@@ -113,73 +139,81 @@ class Client:
 
 		return total_loss
 
-	def _local_update_dp(
-			self,
-			model: PreTrainedModel,
-			optimizer: Optimizer,
-			train_dataloader: DataLoader,
-			lora_params: list[torch.nn.Parameter],
-			head: list[torch.nn.Parameter],
-		) -> tuple[float, float]:
+	def _local_update_dp(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, float]:
 		"""
-		Train under client-level DP-SGD, following Liu et al., "Differentially
-		Private Low-Rank Adaptation of Large Language Model Using Federated
-		Learning" (arXiv:2312.17493), Algorithm 1 -- NOT Opacus's per-example
-		DP-SGD (no `GradSampleModule`, no per-sample gradient clipping). Each
-		step computes an ordinary mini-batch gradient, clips it (once, not
-		once per example) to `config.max_grad_norm`, adds one Gaussian noise
-		draw calibrated to `noise_multiplier * max_grad_norm`, then takes a
-		plain SGD step -- matching Algorithm 1 lines 13-16 exactly (plain SGD,
-		no momentum, is what the paper uses; hence `dp_momentum` defaults to
-		0). LoRA A/B and the classifier head are clipped/noised as two
-		separate groups, mirroring the paper's independent treatment of A and
-		B.
+		Train B (+ classifier head) under Opacus per-example DP-SGD.
 
-		This protects each client's entire per-step update as the unit of
-		privacy (client-level DP) rather than each individual training
-		example (Opacus's per-example DP). That's a weaker guarantee, but it
-		doesn't depend on a large batch size to keep the noise-to-signal ratio
-		usable the way per-example DP-SGD does (noise here is added once to
-		the already batch-averaged gradient, not summed per-example and only
-		then divided by batch size) -- and unlike three successive attempts at
-		tuning Opacus's per-example pipeline for this codebase, this is the
-		mechanism an actual published, validated implementation uses.
+		Flat clipping across B + head combined (NOT per-layer clipping --
+		Opacus's `DPPerLayerOptimizer` collapses a list of per-layer clip
+		norms into a single *aggregate* L2 value and uses that much larger
+		number to scale the noise added to every parameter, which silently
+		inflates the injected noise -- a real bug hit and reverted in an
+		earlier iteration of this codebase).
 
-		Only Opacus's standalone `RDPAccountant` is used here (for `epsilon`
-		reporting), not its optimizer/module wrapping -- it composes privacy
-		spend across steps/rounds exactly like the rest of Opacus, without
-		requiring per-example gradients.
+		`A_max` is a buffer, not a parameter, so it never appears in
+		`optimizer` and is therefore never clipped, noised, or updated by
+		Opacus -- only `B` and the head are. This is what keeps the noise in
+		the reconstructed update `(B + noise) @ A` linear rather than
+		quadratic, unlike every previous (both-A-and-B-trainable) DP-FLoRA
+		attempt.
+
+		Each client keeps ONE `PrivacyEngine` for its whole lifetime, reused
+		every round so its accountant's epsilon composes correctly across
+		every round this client is actually selected for.
 		"""
-		from opacus.accountants import RDPAccountant
+		from opacus import PrivacyEngine
+		from opacus.accountants.utils import get_noise_multiplier
 
-		if self._privacy_accountant is None:
-			self._privacy_accountant = RDPAccountant()
+		if self._privacy_engine is None:
+			self._privacy_engine = PrivacyEngine()
 
-		sample_rate = min(1.0, self.config.batch_size / len(self.dataset))
-		batches = cycle(train_dataloader)
+		if self._sigma is None:
+			sample_rate = min(1.0, self.config.batch_size / len(self.dataset))
+			# A client's total future participation count isn't known in
+			# advance (depends on random per-round selection), so calibrate
+			# sigma against the EXPECTED total local steps across the whole
+			# run instead. A client selected more/less than this expectation
+			# will over/under-spend its nominal target_epsilon somewhat.
+			expected_total_steps = round(self.config.rounds * self.config.client_sample_rate) * self.config.local_steps
+			self._sigma = get_noise_multiplier(
+				target_epsilon=self.target_epsilon,
+				target_delta=self.config.delta,
+				sample_rate=sample_rate,
+				steps=max(1, expected_total_steps),
+			)
+
+		dp_model, dp_optimizer, dp_loader = self._privacy_engine.make_private(
+			module=model,
+			optimizer=optimizer,
+			data_loader=train_dataloader,
+			noise_multiplier=self._sigma,
+			max_grad_norm=self.config.max_grad_norm,
+		)
+
+		batches = cycle(dp_loader)
 		total_loss = 0.0
-		for _ in range(self.config.local_steps):
+		steps_taken = 0
+		while steps_taken < self.config.local_steps:
 			batch = next(batches)
+			if batch["input_ids"].shape[0] == 0:
+				# Poisson sampling under DP can emit an empty batch; skip it.
+				continue
 			batch = {key: value.to(self.device) for key, value in batch.items()}
 
-			optimizer.zero_grad(set_to_none=True)
-			loss = model(**batch).loss
+			dp_optimizer.zero_grad(set_to_none=True)
+			loss = dp_model(**batch).loss
 			loss.backward()
-
-			for group in (lora_params, head):
-				torch.nn.utils.clip_grad_norm_(group, self.config.max_grad_norm)
-				for parameter in group:
-					parameter.grad += torch.normal(
-						mean=0.0,
-						std=self.config.noise_multiplier * self.config.max_grad_norm,
-						size=parameter.grad.shape,
-						device=parameter.grad.device,
-					)
-
-			optimizer.step()
+			dp_optimizer.step()
 			total_loss += float(loss.item())
-			self._privacy_accountant.step(noise_multiplier=self.config.noise_multiplier, sample_rate=sample_rate)
+			steps_taken += 1
 
-		epsilon_spent = self._privacy_accountant.get_epsilon(self.config.delta)
+		epsilon_spent = self._privacy_engine.get_epsilon(self.config.delta)
+
+		# Hand the shared model back in its plain (un-instrumented) form --
+		# it's reused by every other client (see server/computation.py).
+		if hasattr(dp_model, "to_standard_module"):
+			dp_model.to_standard_module()
+		elif hasattr(dp_model, "remove_hooks"):
+			dp_model.remove_hooks()
 
 		return total_loss, epsilon_spent
