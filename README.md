@@ -1,131 +1,103 @@
 # Federated LoRA
 
-Minimal harness for comparing centralized LoRA with a federated variant.
+Federated LoRA is a Python harness for working with methods for federated 
+machine learning and parameter-efficient fine-tuning using low-rank adaptation.
 
-The current first pass implements two methods:
+Federated learning is a machine learning technique in a setting where a 
+federation of many clients, e.g., mobile devices, collaboratively train a model 
+under the orchestration of a central server, allowing for their training data to 
+remain decentralized in the process. Compared to centralized machine learning, 
+this technique can mitigate systemic costs and privacy risks from centrally 
+storing data.[^1]
 
-- `fedit`: FedAvg-style averaging of the full LoRA adapter state.
-- `ffa`: FFA-LoRA-style training where `lora_A` stays frozen on the client and only `lora_B` is communicated.
+Low-Rank Adaptation, or LoRA, enables adaption of large-scale pre-trained models
+with general domain capabilites to particular tasks without having to retrain 
+all model parameters, i.e., parameter-efficient fine-tuning. LoRA freezes 
+pre-trained model weights and injects trainable rank decomposition matrices into 
+each layer of the model architecture, reducing the number of trainable 
+parameters for downstream tasks.[^2]
 
-## Structured comparison
+This project can simulate approaches to applying LoRA in federated learning for
+fine-tuning large language models, including:
 
-| Aspect | FedIT | FFA-LoRA |
-|---|---|---|
-| Problem it tries to solve | Baseline federated fine-tuning with LoRA using standard FedAvg. | Reduce aggregation error in federated LoRA and cut communication by freezing `A` and only transmitting `B`. |
-| Main assumptions | All clients use the same LoRA rank and the server can average both LoRA factors independently. | All clients share the same frozen `A` initialization, so only `B` needs to be trained and aggregated. |
-| Client heterogeneity | Does not directly handle heterogeneous ranks or client-specific adapter structure. | Does not solve rank heterogeneity, but is robust to client data heterogeneity because the shared `A` makes the communicated update exact under averaging of `B`. |
-| Privacy | Standard federated setup; no special privacy mechanism by itself. | Designed to work better under privacy noise because only one LoRA factor is trained and transmitted. |
-| Communication efficiency | Sends both LoRA factors, so communication is proportional to the full adapter state. | Sends only `B`, so communication is roughly half of the FedIT-style adapter payload. |
-| Aggregation of low-rank updates | A and B are averaged separately across clients, which can introduce cross-client interference. | `A` is fixed and shared, so averaging `B` is equivalent to averaging the resulting low-rank update for that factor. |
+- [LaLoRA](la_lora/README.md)
 
-The short version is that FedIT is the straightforward baseline, while FFA-LoRA is the first method to compare against it when you want lower communication and less aggregation noise.
+## Setup
 
-## Structure
-
-- `train_lora.py`: the original single-node LoRA baseline.
-- `main.py`: command-line entry point for the federated harness.
-- `harness/config.py`: dataclass for model, dataset, LoRA, and federation settings.
-- `harness/data.py`: dataset loading, tokenization, and client sharding.
-- `harness/client.py`: local client training loop and adapter-state handling.
-- `harness/aggregate.py`: weighted averaging of client adapter states.
-- `harness/server.py`: federated round orchestration.
-- `harness/eval.py`: validation loss and perplexity evaluation.
-
-## Requirements
-
-- Python 3.13
-- `datasets`
-- `peft`
-- `transformers`
-
-Install dependencies with your preferred environment manager, or with `uv` if you are using the existing project setup.
-
-## Quick start
-
-Run the federated harness with the default FedIT-style setting:
+Use the package manager [uv](https://github.com/astral-sh/uv) to install the 
+project dependencies.
 
 ```bash
-python main.py
+uv sync
 ```
 
-Run the FFA-LoRA variant instead:
+## Usage
 
-```bash
-python main.py --method ffa
-```
+Run a federated LoRA method against a GLUE task and seed. Each run 
+auto-saves to `results/<method>_<task>_seed<seed>.json`:
 
-Write the round-by-round JSON output to a file:
+``````bash
+# fine-tune RoBERTa-base on SST-2 with LA-LoRA (paper defaults: 100 rounds)
+python main.py run --method lalora --task sst2 --seed 42
+``````
 
-```bash
-python main.py --method ffa --output results.json
-```
+The `run` subcommand forwards its flags to the selected method. The full 
+default configuration (client count, rounds, LoRA rank, learning rates, 
+...) lives in `la_lora/config.py`; the CLI currently exposes `--method`, 
+`--task`, `--seed`, and `--results-dir`.
 
-## CLI options
+Repeat across seeds to build the mean and standard deviation bands the 
+plotter expects:
 
-The most useful arguments are:
+``````bash
+for seed in 42 43 44; do
+    python main.py run --method lalora --task sst2 --seed $seed
+done
+``````
 
-- `--method {fedit,ffa}`: choose the aggregation/training strategy.
-- `--rounds`: number of communication rounds.
-- `--clients`: number of federated clients.
-- `--partition-strategy {iid,noniid}`: choose uniform or Dirichlet-skewed data splits.
-- `--dirichlet-alpha`: controls how uneven the non-IID split is; smaller means more skew.
-- `--local-epochs`: local epochs per client per round.
-- `--batch-size`: client and eval batch size.
-- `--learning-rate`: local optimizer learning rate.
-- `--rank`: LoRA rank.
-- `--train-split` and `--eval-split`: dataset slices to use.
-- `--output`: optional JSON file for logging the run.
+Then plot accuracy against round number for every task in the results 
+directory. One figure per task is written to `figures/`, with methods 
+overlaid as mean lines and shaded ±1 standard deviation bands:
 
-## Current defaults
+``````bash
+python main.py plot results/ --output-dir figures
+``````
 
-The current harness uses these defaults unless you override them on the command line:
+Before a long run, shrink the configuration in `la_lora/config.py` for a 
+quick smoke test that exercises the whole pipeline in seconds — set e.g. 
+`rounds = 2`, `num_clients = 4`, `train_split = "train[:1%]"`, run once to 
+confirm it trains end to end, then restore the paper defaults.
 
-- model: GPT-2
-- dataset: WikiText-2 raw
-- train split: `train[:1%]`
-- eval split: `validation[:1%]`
-- clients: 4
-- partition strategy: IID
-- Dirichlet alpha: 0.5
-- rounds: 2
-- local epochs: 1
-- batch size: 2
-- LoRA rank: 8
 
-## Output
+## Roadmap
 
-Each run prints a JSON object with:
+The harness implements the *local alternating* half of LA-LoRA: each 
+client trains the LoRA `A` and `B` matrices on alternating local steps 
+(`la_lora/client.py`), which decouples the coupled `B·A` gradient and is 
+the first of the method's two ingredients.[^3] What remains is the 
+differential-privacy machinery that makes the alternating update pay off.
 
-- the resolved config,
-- one entry per communication round,
-- training loss,
-- validation loss,
-- perplexity,
-- bytes uploaded in the round,
-- cumulative uploaded bytes.
+- **Per-client gradient clipping and Gaussian noise.** Bound each update's 
+  sensitivity by clipping gradients to an `ℓ₂` norm `C`, then add Gaussian 
+  noise with a multiplier `σ` set by the privacy budget `(ε, δ)`. This 
+  slots into the flagged `# TODO: Add differential privacy` block in 
+  `local_update`. Because the updates alternate, only one of `A` or `B` is 
+  noised on any given step, so the perturbation stays linear instead of 
+  picking up the quadratic `N_B·N_A` cross term that destabilises 
+  simultaneous updates.[^3]
+- **Low-pass smoothing filter before aggregation.** Apply an optional 
+  Gaussian low-pass filter to each client's noised update before it is 
+  uploaded, filtering out the high-frequency components of the DP 
+  perturbation. This suppresses residual noise variance and steers 
+  aggregation toward flatter minima, improving cross-client consistency 
+  and generalisation under a strict privacy budget.[^3] It sits between 
+  `local_update` and `aggregate`.
+- **A privacy configuration surface.** Add `clip_norm`, `noise_multiplier` 
+  (or a target `(ε, δ)`), and a `smoothing` toggle to `Config`, exposed on 
+  the CLI, so sweeps over the privacy budget are reproducible and land in 
+  the run JSON alongside the existing hyperparameters.
 
-That output is meant to feed later plotting notebooks for perplexity-vs-round and perplexity-vs-communication curves.
+## References
 
-## Plotting results
-
-Use `plot_results.py` to turn one or more `main.py` JSON outputs into figures:
-
-```bash
-python plot_results.py fedit.json ffa.json --output-dir figures
-```
-
-The script writes these PNG files into the output directory:
-
-- `train_loss_by_round.png`
-- `eval_loss_by_round.png`
-- `perplexity_by_round.png`
-- `uploaded_bytes_by_round.png`
-- `perplexity_vs_bytes.png`
-
-If you pass both FedIT and FFA-LoRA runs, the figures will overlay the two curves so you can see the communication/performance tradeoff directly.
-
-<!-- ## Notes on the first pass
-
-This repository is focused on the FedIT vs FFA-LoRA comparison first. HetLoRA, FLoRA, and the broader comparison table stay in the plan document for now.
-
-WikiText-2 is the default dataset because it matches the existing baseline and gives the fastest path from the current single-node script to a federated benchmark. TinyStories is a reasonable alternative later if you want cleaner, faster runs. -->
+[^1]: https://doi.org/10.48550/arXiv.1912.04977
+[^2]: https://doi.org/10.48550/arXiv.2106.09685
