@@ -15,12 +15,12 @@ def aggregate(
 	Parameters
 	----------
 	state_dicts : list[dict[str, torch.Tensor]]
-	        list of dictionaries of updated adapter states from each client
+		list of dictionaries of updated adapter states from each client
 
 	Returns
 	------
 	dict[str, torch.Tensor]
-	        unweighted mean of each adapter across clients key-by-key
+		unweighted mean of each adapter across clients key-by-key
 	"""
 	n = len(state_dicts)
 	averaged = {}

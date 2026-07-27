@@ -11,14 +11,14 @@ def update_model(
 
 	For LoRA, this simply returns the aggregation of the local client updates.
 
-	Paramters
-	---------
+	Parameters
+	----------
 	aggregated_state : dict[str, torch.Tensor]
-	    Aggregation result from client updates.
+		Aggregation result from client updates.
 
 	Returns
 	-------
 	dict[str, torch.Tensor]
-	    A dictionary of each parameter and its corresponding aggregated tensor.
+		A dictionary of each parameter and its corresponding aggregated tensor.
 	"""
 	return aggregated_state

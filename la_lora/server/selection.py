@@ -15,16 +15,16 @@ def select_clients(
 	Parameters
 	----------
 	clients : list[Client]
-	    A list of all participating clients to select from.
+		A list of all participating clients to select from.
 	sample_rate : float
-	    The proportion of all clients to select.
+		The proportion of all clients to select.
 	generator : torch.Generator
-	    Random number generator for selection.
+		Random number generator for selection.
 
 	Returns
 	-------
 	list[Client]
-	    A list of randomly selected clients.
+		A list of randomly selected clients.
 	"""
 	k = max(1, round(sample_rate * len(clients)))
 	picks = torch.randperm(len(clients), generator=generator)[:k]

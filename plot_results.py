@@ -1,18 +1,3 @@
-"""Plot accuracy-by-round curves from la_lora run results.
-
-Each run writes a JSON file (see ``la_lora.run``) containing its ``config`` and a
-per-round ``history``. This script reads a set of those files, groups them by
-GLUE task and by method, averages across seeds, and writes one
-accuracy-by-round figure per task with the methods overlaid and a mean +/- std
-band shaded across seeds.
-
-Usage::
-
-    python plot_results.py                     # reads results/, writes figures/
-    python plot_results.py results --output-dir figures
-    python plot_results.py results/lalora_sst2_seed42.json ...
-"""
-
 from __future__ import annotations
 
 import json
@@ -40,17 +25,18 @@ class Run:
 
 def _iter_json_paths(inputs: list[str] | str) -> list[Path]:
 	"""
-	Expand files and directories into a flat, sorted list of JSON paths.
+	Expand files and directories into a list of JSON paths.
 
 	Parameters
 	----------
 	inputs : list[str] | str
-	    TODO
+		One or more file paths and/or directory paths as strings or Path
+		objects. Only JSON files are kept.
 
 	Returns
 	-------
 	list[Path]
-	    TODO
+		Flat list of JSON Path objects
 	"""
 	if isinstance(inputs, (str, Path)):
 		inputs = [inputs]
@@ -71,12 +57,12 @@ def load_run(path: Path) -> Run:
 	Parameters
 	----------
 	path : Path
-	    A Path object to a run's JSON output.
+		A Path object to a run's JSON output.
 
 	Returns
 	-------
 	Run
-	    A Run object with method, task, seed, rounds, and accuracy information.
+		A Run object with method, task, seed, rounds, and accuracy information.
 	"""
 	payload = json.loads(path.read_text(encoding='utf-8'))
 	config = payload.get('config', {})
@@ -103,13 +89,14 @@ def _aggregate_over_seeds(
 	Parameters
 	----------
 	runs : list[Run]
-	    A list of Run objects with method, task, seed, rounds, and accuracy
-	    information.
+		A list of Run objects with method, task, seed, rounds, and accuracy
+		information.
 
 	Returns
 	-------
-	tuple[np.ndarray, np.ndarray, np.ndarry]
-	    A tuple of numpy arrays
+	tuple[np.ndarray, np.ndarray, np.ndarray]
+		Tuple of round indices, per-round mean accuracy across runs, and the
+		per-round standard deviation.
 	"""
 	n_rounds = min(len(run.accuracy) for run in runs)
 	rounds = np.asarray(runs[0].rounds[:n_rounds])
@@ -123,6 +110,27 @@ def _plot_task(
 	colors: dict[str, str],
 	output_path: Path,
 ) -> None:
+	"""
+	Draws one figure overlaying every method for a single task, with a mean line
+	and a shaded standard deviation band per method, using the shared ``colors``
+	map. Saves to ``output_path``.
+
+	Parameters
+	----------
+	task : str
+		A name of the task the method was ran on.
+	method_runs : dict[str, list[Run]]
+		A dictionary mapping the name of each method to its associated runs.
+	colors : dict[str, str]
+		A dictionary mapping method names to shared colors.
+	output_path : Path
+		A Path object for where the figure should be saved to.
+
+	Returns
+	-------
+	None
+		Saves output figure and does not return anything.
+	"""
 	plt.figure(figsize=(8, 5))
 	for method in sorted(method_runs):
 		runs = method_runs[method]
@@ -163,14 +171,15 @@ def plot(
 	Parameters
 	----------
 	inputs : list[str] | str
-	    TODO
+		One or more file paths and/or directory paths as strings or Path
+		objects. Only JSON files are kept.
 	output_dir : str
-	    TODO
+		Directory to create and write per-task figures into.
 
 	Returns
 	-------
 	list[Path]
-	    TODO
+		List of written figure paths, one per task.
 	"""
 	paths = _iter_json_paths(inputs)
 	if not paths:

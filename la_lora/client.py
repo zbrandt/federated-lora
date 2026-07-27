@@ -51,16 +51,16 @@ class Client:
 		Parameters
 		----------
 		model : PreTrainedModel
-		    Model with LoRA adapters modules to train.
+			Model with LoRA adapters modules to train.
 		adapter_state : dict[str, torch.Tensor]
-		    TODO: Figure out what this is exactly
+			Global LoRA parameters to load into ``model`` before training.
 		round_index : int
 			The global round index used for seeding client's data shuffles.
 
 		Returns
 		-------
 		ClientResults
-		    TODO: Evaluate this return class
+			The udpated LoRA tensors plus training metrics.
 		"""
 		model.load_state_dict(
 			adapter_state, strict=False
@@ -81,7 +81,7 @@ class Client:
 				head.append(parameter)
 
 		# freeze all other parameters
-		for name, parameter in model.named_parameters():
+		for _name, parameter in model.named_parameters():
 			parameter.requires_grad = False
 		for parameter in (*lora_A, *lora_B, *head):
 			parameter.requires_grad = True
@@ -107,7 +107,6 @@ class Client:
 
 		batches = cycle(train_dataloader)
 
-		total_tokens = 0
 		total_loss = 0.0
 		for step in range(1, self.config.local_steps + 1):
 			batch = next(batches)

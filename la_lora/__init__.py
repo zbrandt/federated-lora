@@ -29,12 +29,12 @@ def build(config: Config) -> Server:
 	Parameters
 	----------
 	config : Config
-	    The hyperparameter configuration from config.py.
+		The hyperparameter configuration from config.py.
 
 	Returns
 	-------
 	Server
-	    An instance of the Server class from server.py.
+		An instance of the Server class from server.py.
 	"""
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -86,13 +86,13 @@ def run(argv: list[str] | None = None) -> dict:
 	Parameters
 	----------
 	argv : list[str] | None
-	    List of arguments from the user.
+		List of arguments from the user.
 
 	Returns
 	-------
 	dict
-	    result dictionary of configured hyperparameters as well as training and
-	    evaluation history.
+		result dictionary of configured hyperparameters as well as training and
+		evaluation history.
 	"""
 	config = Config.from_argv(argv)
 	server = build(config)

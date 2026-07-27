@@ -21,19 +21,20 @@ def client_computation(
 	Parameters
 	----------
 	selected_clients : list[Client]
-	    A list of selected clients for one round of the federated learning
-	    algorithm.
+		A list of selected clients for one round of the federated learning
+		algorithm.
 	model : PreTrainedModel
-	    TODO: evaluate this
+		The shared PEFT model passed to each client's ``local_update``. Clients
+		load ``global_state`` into it.
 	global_state : dict[str, torch.Tensor]
-	    A dictionary of the global model's initial parameters before updating.
+		A dictionary of the global model's initial parameters before updating.
 	round_index : int
 		The global round index used for seeding client's data shuffles.
 
 	Returns
 	-------
 	tuple[list[dict[str, torch.Tensor]], list[float], int]
-	    A tuple of states and losses from all the client updates.
+		A tuple of states and losses from all the client updates.
 	"""
 	states = []
 	losses = []
