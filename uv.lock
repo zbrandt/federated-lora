@@ -415,6 +415,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "datasets" },
+    { name = "huggingface-hub" },
     { name = "matplotlib" },
     { name = "peft" },
     { name = "transformers" },
@@ -423,6 +424,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "datasets", specifier = ">=5.0.0" },
+    { name = "huggingface-hub", specifier = ">=1.23.0" },
     { name = "matplotlib", specifier = ">=3.10.0" },
     { name = "peft", specifier = ">=0.19.1" },
     { name = "transformers", specifier = ">=5.13.1" },
