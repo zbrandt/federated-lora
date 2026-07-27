@@ -33,52 +33,48 @@ benchmark, using LoRA adapters injected into the attention `query` and
 
 ## Differential privacy (DP-FLoRA)
 
-Setting `noise_multiplier` in `Config` enables DP-FLoRA: each client trains
-under Opacus[^3] per-example DP-SGD (per-sample gradient clipping, calibrated
-Gaussian noise) instead of plain training, with a persistent `PrivacyEngine`
-kept on each `Client` for its whole lifetime so its `ε` accumulates correctly
-across every round it is actually selected for — not just the current round.
+Setting `noise_multiplier` in `Config` enables DP-FLoRA. This is **client-level**
+DP-SGD, following Liu et al., "Differentially Private Low-Rank Adaptation of
+Large Language Model Using Federated Learning"[^4], Algorithm 1 -- not
+Opacus's[^3] per-example DP-SGD. Each local step computes an ordinary
+mini-batch gradient, clips it once (not once per example) to `max_grad_norm`
+-- LoRA `A`/`B` and the classifier head clipped as two independent groups,
+mirroring the paper's separate treatment of `A` and `B` -- adds one Gaussian
+noise draw calibrated to `noise_multiplier * max_grad_norm` per group, then
+takes a plain SGD step (`dp_lr`, `dp_momentum` -- 0 by default, matching the
+paper's plain-SGD update rule). `max_grad_norm` and `dp_lr` default to that
+paper's own validated BERT-base hyperparameters (their Table 2); RoBERTa-base
+is comparable in scale. Only Opacus's standalone `RDPAccountant` is used (for
+reporting `epsilon`), kept per-`Client` for its whole lifetime so spend
+composes correctly across every round it's actually selected for -- not the
+rest of Opacus's per-example machinery (no `GradSampleModule`, no
+`PrivacyEngine.make_private`).
 
-The DP path optimizes with plain SGD+momentum (`dp_lr`, `dp_momentum`), not
-`AdamW` like the rest of `Config`'s single `lr`. DP noise adds a constant bias
-to Adam's second-moment estimate, which specifically miscalibrates its
-adaptive step size for small, low-variance parameters like a rank-8 LoRA
-adapter: Adam ends up normalizing every step to roughly `lr` regardless of
-whether the underlying (noised) gradient carried any real signal, so it can't
-tell a genuine (tiny) LoRA gradient apart from pure injected noise — and with
-only `local_steps` per round before the adapter is reinitialized from scratch
-(FLoRA's merge-and-reinit), there's no time for that bias to average out
-either. This is a documented failure mode of DP-Adam, not specific to this
-codebase (see e.g. "DP-AdamBC", arXiv:2312.14334). SGD's step scales directly
-with the clipped, noised gradient instead, so it doesn't have this failure
-mode — at the cost of needing a much larger learning rate than Adam's for
-comparable progress.
+This protects each client's entire per-step update as the unit of privacy,
+rather than each individual training example the way Opacus's per-example
+DP-SGD does -- a weaker guarantee, but one that doesn't depend on a large
+batch size to keep noise-to-signal usable (the noise here is added once to
+the already batch-averaged gradient, not summed per-example and divided by
+batch size after the fact). Two earlier attempts at wiring up Opacus's
+per-example pipeline directly for this codebase (full per-example clipping,
+then per-layer clipping, then several rounds of learning-rate/optimizer
+tuning) all failed to produce any learning under DP, capping out at exactly
+the majority-class baseline; this simpler, actually-published mechanism was
+adopted instead of further tuning that pipeline blind.
 
-Clipping is Opacus's default flat clipping: one combined per-example norm
-(`max_grad_norm`) across every trainable tensor (LoRA `A`/`B` and the
-classifier head together), clipped and noised as a unit. Per-layer clipping
-(giving the LoRA adapter its own, smaller clip norm than the head) was tried
-here first, but Opacus's `DPPerLayerOptimizer` collapses a list of per-layer
-norms into a single *aggregate* L2 value and uses that (much larger) number to
-scale the noise added to every parameter — with SGD's step scaling directly
-with that noise, this made the actually-injected noise far larger than
-intended and diverged training outright. Flat clipping keeps the noise scale
-directly tied to the one `max_grad_norm` value being tuned, at the cost of the
-classifier head's naturally-larger per-example gradients being able to
-dominate the shared clip factor.
-
-`max_grad_norm`, `dp_lr`, and `dp_momentum`'s defaults are deliberately
-conservative starting points, not tuned values — DP-SGD's usable range for
-these depends heavily on the model, task, and batch size, so expect to sweep
-them (in particular, if training diverges, cut `dp_lr` first).
+Plain SGD, not AdamW, is used for the DP path regardless: DP noise adds a
+constant bias to Adam's second-moment estimate, which specifically
+miscalibrates its adaptive step size for small, low-variance parameters like
+a rank-8 LoRA adapter (a documented failure mode of DP-Adam generally, not
+specific to this codebase -- see e.g. "DP-AdamBC", arXiv:2312.14334), and
+Algorithm 1 in the reference paper uses plain SGD for exactly this reason.
 
 This uses `noise_multiplier` as the primary privacy knob rather than solving
-for a target `epsilon` up front (`make_private_with_epsilon`), because in a
-federated setting a client doesn't know in advance how many future rounds it
-will be selected for, so there is no fixed "total steps" to solve a target
-epsilon against. Instead, `epsilon` actually spent is *reported* per round
-(`RoundMetrics.epsilon_spent`, the max across that round's selected clients)
-via `PrivacyEngine.get_epsilon(delta)`.
+for a target `epsilon` up front, because in a federated setting a client
+doesn't know in advance how many future rounds it will be selected for, so
+there is no fixed "total steps" to solve a target epsilon against. Instead,
+`epsilon` actually spent is *reported* per round (`RoundMetrics.epsilon_spent`,
+the max across that round's selected clients) via `RDPAccountant.get_epsilon`.
 
 FLoRA's stacking aggregation has no averaging step for `A`/`B` — each
 client's contribution is reconstructed exactly, not diluted by an average
@@ -114,9 +110,9 @@ python main.py run --method flora --task sst2 --seed 42
 | `--seed`              | RNG seed for partitioning, selection, and reinitialization |
 | `--results-dir`       | directory the run JSON is written to                      |
 | `--noise-multiplier`  | Gaussian noise multiplier for DP-SGD; unset disables DP    |
-| `--max-grad-norm`     | per-example clipping norm (flat, across LoRA `A`/`B` and the classifier head) under DP-SGD |
-| `--dp-lr`             | SGD learning rate for the DP path                          |
-| `--dp-momentum`       | SGD momentum for the DP path                               |
+| `--max-grad-norm`     | gradient clipping norm (once per step, per group) for the DP path |
+| `--dp-lr`             | plain SGD learning rate for the DP path                    |
+| `--dp-momentum`       | SGD momentum for the DP path (0 matches the reference algorithm) |
 
 ## Usage
 
@@ -167,3 +163,4 @@ aggregation, and merge-and-reinit are all wired correctly.
 [^1]: https://doi.org/10.48550/arXiv.2106.09685
 [^2]: https://doi.org/10.48550/arXiv.1804.07461
 [^3]: https://doi.org/10.48550/arXiv.2109.12298
+[^4]: https://doi.org/10.48550/arXiv.2312.17493

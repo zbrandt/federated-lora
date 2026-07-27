@@ -27,7 +27,11 @@ class Config:
     dirichlet_alpha: float = 0.8
     rounds: int = 100
     local_steps: int = 20
-    batch_size: int = 16
+    batch_size: int = 128               # matches the FLoRA paper's effective batch size (arXiv:2409.05976 Appendix
+                                         # A.2: "the batch size is 128 and the micro batch size is 16" -- they
+                                         # accumulate 8 micro-batches of 16 to reach it; RoBERTa-base is small
+                                         # enough that a real batch of 128 is used directly here instead). A larger
+                                         # batch also gives a less noisy mean gradient for the DP path to clip/noise.
     max_length: int = 128
     seed: int = 42
     lr: float = 3e-4                    # single learning rate: FLoRA trains A and B jointly, not alternately
@@ -39,23 +43,28 @@ class Config:
     target_modules: tuple[str, ...] = ("query", "value")
     train_classifier_head: bool = True
 
-    # Differential privacy (optional; None => plain FLoRA). These defaults are
-    # deliberately conservative starting points, not tuned values -- DP-SGD's
-    # usable range for max_grad_norm/dp_lr/noise_multiplier depends heavily on
-    # the model, task, and batch size, so expect to sweep them.
-    max_grad_norm: float = 0.1          # per-example gradient clipping norm (flat: one combined norm across every
-                                         # trainable tensor, both LoRA A/B and the classifier head) for Opacus DP-SGD
-    noise_multiplier: float | None = None  # set > 0 to enable DP-FLoRA
+    # Differential privacy (optional; None => plain FLoRA). Client-level DP-SGD
+    # following Liu et al., "Differentially Private Low-Rank Adaptation of
+    # Large Language Model Using Federated Learning" (arXiv:2312.17493,
+    # Algorithm 1) -- clip the ordinary (already batch-averaged) gradient once
+    # per step to `max_grad_norm`, add one Gaussian noise draw calibrated to
+    # `noise_multiplier * max_grad_norm`, then take a plain SGD step. See
+    # client.py's `_local_update_dp` for why this (not Opacus's per-example
+    # DP-SGD) is what's implemented. `max_grad_norm` and `dp_lr` below default
+    # to that paper's own validated BERT-base hyperparameters (their Table 2:
+    # clipping bound C=10, learning rate 5e-4); `noise_multiplier` is the
+    # direct analogue of their noise scale sigma and is left for the caller to
+    # set, same as the privacy/utility sweeps in that paper's own tables.
+    max_grad_norm: float = 10.0         # gradient clipping norm (once per step, per group -- LoRA A/B and the
+                                         # classifier head clipped independently -- not per-example) for DP-SGD
+    noise_multiplier: float | None = None  # set > 0 to enable DP-FLoRA (this is "sigma" in the DP-LoRA paper)
     delta: float = 1e-5                 # only used to report accumulated epsilon spend, not as a solver target
-    dp_lr: float = 0.01                 # SGD learning rate for the DP path (see client.py for why DP uses SGD,
-                                         # not AdamW -- Adam's adaptive step size defeats DP-SGD's clipping/noise
-                                         # calibration). Start small: unlike Adam's step, SGD's step scales
-                                         # directly with the clipped+noised gradient, so too large a value here
-                                         # (combined with `dp_momentum`'s amplification) will diverge outright.
-    dp_momentum: float = 0.5            # SGD momentum for the DP path; averages the noised gradient across steps
-                                         # within a round. Kept modest (rather than the usual 0.9) since momentum
-                                         # amplifies the effective step size by roughly 1/(1 - dp_momentum), and
-                                         # DP-SGD's per-step noise is already sizeable relative to the true signal.
+    dp_lr: float = 5e-4                 # plain SGD learning rate for the DP path
+    dp_momentum: float = 0.0            # SGD momentum for the DP path; 0 matches the reference algorithm (plain
+                                         # SGD, no momentum term) -- adaptive optimizers like Adam are a known bad
+                                         # fit for DP-SGD (DP noise biases Adam's second-moment estimate; see
+                                         # "DP-AdamBC", arXiv:2312.14334), and momentum has the same amplification
+                                         # risk that made an earlier (higher-momentum) attempt at this diverge.
 
     results_dir: str = "results"        # runs auto-save in this directory as <method>_<task>_seed<seed>.json
     output: str | None = None           # explicit path override, ignores results_dir naming when set
@@ -74,7 +83,7 @@ class Config:
 
     @property
     def use_dp(self) -> bool:
-        """True whenever DP-FLoRA's Opacus pipeline should be engaged."""
+        """True whenever DP-FLoRA's client-level DP-SGD path should be engaged."""
         return self.noise_multiplier is not None
 
     @classmethod
@@ -91,11 +100,11 @@ class Config:
         parser.add_argument("--noise-multiplier", type=float, default=defaults.noise_multiplier,
                             help="Gaussian noise multiplier for DP-SGD; unset disables DP (plain FLoRA)")
         parser.add_argument("--max-grad-norm", type=float, default=defaults.max_grad_norm,
-                            help="per-example gradient clipping norm (flat, across LoRA A/B and the classifier head) under DP-SGD")
+                            help="gradient clipping norm (once per step, per group) for the DP path")
         parser.add_argument("--dp-lr", type=float, default=defaults.dp_lr,
-                            help="SGD learning rate used for the DP path (DP-SGD uses SGD, not AdamW)")
+                            help="plain SGD learning rate used for the DP path")
         parser.add_argument("--dp-momentum", type=float, default=defaults.dp_momentum,
-                            help="SGD momentum used for the DP path")
+                            help="SGD momentum used for the DP path (0 matches the reference algorithm)")
         args = parser.parse_args(argv)
         return cls(
             method=args.method,
