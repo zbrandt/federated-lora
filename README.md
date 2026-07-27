@@ -22,15 +22,6 @@ fine-tuning large language models, including:
 
 - [LaLoRA](la_lora/README.md)
 
-## Setup
-
-Use the package manager [uv](https://github.com/astral-sh/uv) to install the 
-project dependencies.
-
-```bash
-uv sync
-```
-
 ## Usage
 
 Run a federated LoRA method against a GLUE task and seed. Each run 
@@ -68,36 +59,69 @@ quick smoke test that exercises the whole pipeline in seconds — set e.g.
 `rounds = 2`, `num_clients = 4`, `train_split = "train[:1%]"`, run once to 
 confirm it trains end to end, then restore the paper defaults.
 
+## Contributing
 
-## Roadmap
+Pull requests are welcome. Please make sure to follow the steps below to open an
+issue and make changes.
 
-The harness implements the *local alternating* half of LA-LoRA: each 
-client trains the LoRA `A` and `B` matrices on alternating local steps 
-(`la_lora/client.py`), which decouples the coupled `B·A` gradient and is 
-the first of the method's two ingredients.[^3] What remains is the 
-differential-privacy machinery that makes the alternating update pay off.
+### Installation
 
-- **Per-client gradient clipping and Gaussian noise.** Bound each update's 
-  sensitivity by clipping gradients to an `ℓ₂` norm `C`, then add Gaussian 
-  noise with a multiplier `σ` set by the privacy budget `(ε, δ)`. This 
-  slots into the flagged `# TODO: Add differential privacy` block in 
-  `local_update`. Because the updates alternate, only one of `A` or `B` is 
-  noised on any given step, so the perturbation stays linear instead of 
-  picking up the quadratic `N_B·N_A` cross term that destabilises 
-  simultaneous updates.[^3]
-- **Low-pass smoothing filter before aggregation.** Apply an optional 
-  Gaussian low-pass filter to each client's noised update before it is 
-  uploaded, filtering out the high-frequency components of the DP 
-  perturbation. This suppresses residual noise variance and steers 
-  aggregation toward flatter minima, improving cross-client consistency 
-  and generalisation under a strict privacy budget.[^3] It sits between 
-  `local_update` and `aggregate`.
-- **A privacy configuration surface.** Add `clip_norm`, `noise_multiplier` 
-  (or a target `(ε, δ)`), and a `smoothing` toggle to `Config`, exposed on 
-  the CLI, so sweeps over the privacy budget are reproducible and land in 
-  the run JSON alongside the existing hyperparameters.
+Use the package manager [uv](https://github.com/astral-sh/uv) to install the 
+project dependencies and development tools.
+
+```bash
+uv sync
+```
+
+This creates a `.venv/` and installs the runtime dependencies plus the
+`dev` dependency group (including [ruff](https://docs.astral.sh/ruff/)).
+No environment variables or external services are required. Datasets and
+model weights are pulled from the Hugging Face Hub on first run, so an
+internet connection is needed the first time you execute `main.py`.
+
+Confirm your setup by running a quick smoke test — shrink the config in
+`la_lora/config.py` (e.g. `rounds = 2`, `num_clients = 4`,
+`train_split = "train[:1%]"`) and run once to confirm the pipeline trains
+end to end. Afterwards, you can restore the paper defaults.
+
+```bash
+python main.py run --method lalora --task sst2 --seed 42
+```
+
+### Linting and formatting
+
+Use ruff for both [linting](https://docs.astral.sh/ruff/linter/) and
+[formatting](https://docs.astral.sh/ruff/formatter/). The rule set and
+style (79-character lines, single quotes, tab indentation) are configured
+under `[tool.ruff]` in `pyproject.toml`. Please run both before opening a
+pull request so changes stay consistent and don't introduce regressions.
+
+```bash
+# Report lint issues
+uv run ruff check .
+
+# Auto-fix what can be fixed safely
+uv run ruff check --fix .
+
+# Format the code
+uv run ruff format .
+```
+
+`ruff check .` should report no errors and
+`ruff format --check .` should report no changes.
+
+### Tests
+
+Please verify changes manually with the smoke-test run above and, where 
+relevant, regenerate a figure to confirm the plotting path still works.
+
+```bash
+python main.py plot results/ --output-dir figures
+```
 
 ## References
 
-[^1]: https://doi.org/10.48550/arXiv.1912.04977
-[^2]: https://doi.org/10.48550/arXiv.2106.09685
+[^1]: McMahan, B., et al. "Communication-Efficient Learning of Deep Networks from Decentralized Data." arXiv preprint arXiv:1602.05629, 2016. 
+https://arxiv.org/abs/1602.05629
+[^2]: Hu, E. J., et al. "LoRA: Low-Rank Adaptation of Large Language Models." 
+arXiv preprint arXiv:2106.09685, 2021. https://arxiv.org/abs/2106.09685

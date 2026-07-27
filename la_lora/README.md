@@ -94,8 +94,11 @@ that gives LA-LoRA its purpose is not yet.
 
 ## References
 
-[^1]: https://doi.org/10.48550/arXiv.2602.19926
-[^2]: https://doi.org/10.48550/arXiv.2106.09685
-[^3]: https://doi.org/10.48550/arXiv.1907.11692
-[^4]: https://doi.org/10.48550/arXiv.1804.07461
-[^5]: https://doi.org/10.1145/2976749.2978318
+[^1]: Yu, X., et al. "Rethinking LoRA for Privacy-Preserving Federated Learning 
+in Large Models." arXiv preprint arXiv:2602.19926, 2026. 
+https://doi.org/10.48550/arXiv.2602.19926
+[^2]: Liu, Y., et al. "RoBERTa: A Robustly Optimized BERT Pretraining Approach." 
+arXiv preprint arXiv:1907.11692, 2019. https://doi.org/10.48550/arXiv.1907.11692
+[^3]: Wang, A., et al. "GLUE: A Multi-Task Benchmark and Analysis Platform for 
+Natural Language Understanding." arXiv preprint arXiv:1804.07461, 2018. 
+https://doi.org/10.48550/arXiv.1804.07461
