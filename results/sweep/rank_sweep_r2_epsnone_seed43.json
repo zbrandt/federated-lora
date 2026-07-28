@@ -1,0 +1,306 @@
+{
+  "config": {
+    "method": "flora-rank2-epsnone",
+    "model_name": "roberta-base",
+    "dataset_name": "nyu-mll/glue",
+    "dataset_task": "sst2",
+    "train_split": "train",
+    "num_clients": 20,
+    "client_sample_rate": 0.2,
+    "partition_strategy": "noniid",
+    "dirichlet_alpha": 0.8,
+    "rounds": 30,
+    "local_steps": 20,
+    "batch_size": 128,
+    "max_length": 128,
+    "seed": 43,
+    "lr": 0.0003,
+    "lora_rank": 2,
+    "lora_alpha": 8,
+    "lora_dropout": 0.1,
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "train_classifier_head": true,
+    "client_ranks": null,
+    "client_epsilons": null,
+    "delta": 1e-05,
+    "max_grad_norm": 1.0,
+    "dp_lr": 0.001,
+    "results_dir": "results",
+    "output": null
+  },
+  "history": [
+    {
+      "round_index": 1,
+      "train_loss": 0.5239292968064546,
+      "eval_loss": 0.7661668461397153,
+      "accuracy": 0.5091743119266054,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 2,
+      "train_loss": 0.5049176376312972,
+      "eval_loss": 0.8711059492662412,
+      "accuracy": 0.49311926605504586,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 3,
+      "train_loss": 0.2579340716936713,
+      "eval_loss": 0.9511668944577558,
+      "accuracy": 0.6215596330275229,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 4,
+      "train_loss": 0.32061141896992923,
+      "eval_loss": 0.3377197157899174,
+      "accuracy": 0.8623853211009175,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 5,
+      "train_loss": 0.17010627382724122,
+      "eval_loss": 1.7701751824912675,
+      "accuracy": 0.5527522935779816,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 6,
+      "train_loss": 0.48480768632143734,
+      "eval_loss": 0.31346960215393554,
+      "accuracy": 0.8841743119266054,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 7,
+      "train_loss": 0.2673897508531809,
+      "eval_loss": 0.2232415300170216,
+      "accuracy": 0.9151376146788991,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 8,
+      "train_loss": 0.21409485559124733,
+      "eval_loss": 0.21955114657725763,
+      "accuracy": 0.911697247706422,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 9,
+      "train_loss": 0.27441337872296573,
+      "eval_loss": 0.21852686509079888,
+      "accuracy": 0.9185779816513762,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 10,
+      "train_loss": 0.2586051610298455,
+      "eval_loss": 0.21291573824138815,
+      "accuracy": 0.9220183486238532,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 11,
+      "train_loss": 0.2563722399994731,
+      "eval_loss": 0.2055583551115946,
+      "accuracy": 0.9231651376146789,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 12,
+      "train_loss": 0.21800164487212895,
+      "eval_loss": 0.3164241527198651,
+      "accuracy": 0.8795871559633027,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 13,
+      "train_loss": 0.25851548346690834,
+      "eval_loss": 0.21521163793331985,
+      "accuracy": 0.926605504587156,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 14,
+      "train_loss": 0.2259761208668351,
+      "eval_loss": 0.31139365768213884,
+      "accuracy": 0.8772935779816514,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 15,
+      "train_loss": 0.18442780564910208,
+      "eval_loss": 0.2042360683099939,
+      "accuracy": 0.9220183486238532,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 16,
+      "train_loss": 0.1874575948342681,
+      "eval_loss": 0.21888408351928815,
+      "accuracy": 0.9174311926605505,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 17,
+      "train_loss": 0.13722768188204099,
+      "eval_loss": 0.9230652960068589,
+      "accuracy": 0.7213302752293578,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 18,
+      "train_loss": 0.31387730161659416,
+      "eval_loss": 0.22548785040137964,
+      "accuracy": 0.9197247706422018,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 19,
+      "train_loss": 0.186640610691029,
+      "eval_loss": 0.3035486370598504,
+      "accuracy": 0.8818807339449541,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 20,
+      "train_loss": 0.1552403121459065,
+      "eval_loss": 0.4042648221921483,
+      "accuracy": 0.8532110091743119,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 21,
+      "train_loss": 0.2835591621696949,
+      "eval_loss": 0.20661007113959812,
+      "accuracy": 0.930045871559633,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 22,
+      "train_loss": 0.22652080031111838,
+      "eval_loss": 0.22053480667805453,
+      "accuracy": 0.9197247706422018,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 23,
+      "train_loss": 0.1278548228667205,
+      "eval_loss": 1.2166841555079189,
+      "accuracy": 0.6697247706422018,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 24,
+      "train_loss": 0.3589750798932528,
+      "eval_loss": 0.20476703632862195,
+      "accuracy": 0.9277522935779816,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 25,
+      "train_loss": 0.19257236997218571,
+      "eval_loss": 0.1948650408228603,
+      "accuracy": 0.926605504587156,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 26,
+      "train_loss": 0.20208260491490365,
+      "eval_loss": 0.2003810873272222,
+      "accuracy": 0.926605504587156,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 27,
+      "train_loss": 0.21857652682811024,
+      "eval_loss": 0.20832764282139069,
+      "accuracy": 0.9277522935779816,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 28,
+      "train_loss": 0.181288297008723,
+      "eval_loss": 0.22432497649564656,
+      "accuracy": 0.9151376146788991,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 29,
+      "train_loss": 0.21780299069359899,
+      "eval_loss": 0.18928605058324446,
+      "accuracy": 0.9369266055045872,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    },
+    {
+      "round_index": 30,
+      "train_loss": 0.18966432268498465,
+      "eval_loss": 0.28327628587364057,
+      "accuracy": 0.8990825688073395,
+      "uploaded_bytes": 0,
+      "cumulative_uploaded_bytes": 0,
+      "epsilon_spent": null
+    }
+  ]
+}
