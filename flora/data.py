@@ -16,7 +16,12 @@ def _tokenize(dataset: Dataset, tokenizer: PreTrainedTokenizerBase, config: Conf
 		out["labels"] = batch["label"]
 		return out
 
-	return dataset.map(encode, batched=True, remove_columns=dataset.column_names)
+	# keep_in_memory avoids writing a fresh Arrow cache file to disk for
+	# every shard of every run -- since each sweep point uses a different
+	# seed/num_clients, the cache fingerprint changes every time and nothing
+	# gets reused, so leaving this on disk just accumulates until the quota
+	# is exceeded (as happened running sweep.py).
+	return dataset.map(encode, batched=True, remove_columns=dataset.column_names, keep_in_memory=True)
 
 
 def _partition_dirichlet(labels: list[int], num_clients: int, alpha: float, rng: np.random.Generator) -> list[list[int]]:
