@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 GLUE_TASKS = {
 	'sst2': (('sentence', None), 2, 'validation'),
@@ -10,8 +10,16 @@ GLUE_TASKS = {
 	'mnli': (('premise', 'hypothesis'), 3, 'validation_matched'),
 }
 
+@dataclass
+class PrivacyConfig:
+	dp: bool = False
+	clip_norm: float = 1.0	# TODO
+	target_epsilon: float | None = None	# TODO
+	target_delta: float = 1e-5 # TODO
+	noise_multiplier: float | None = None  # TODO
+    smoothing: bool = True # TODO
 
-# TODO: figure out how dataclass works
+
 @dataclass(slots=True)
 class Config:
 	method: str = (
@@ -20,6 +28,7 @@ class Config:
 	model_name: str = (
 		'roberta-base'  # https://huggingface.co/FacebookAI/roberta-base
 	)
+	model_class: AutoModelForSequenceClassification
 	dataset_name: str = (
 		'nyu-mll/glue'  # https://huggingface.co/datasets/nyu-mll/glue
 	)
@@ -40,17 +49,23 @@ class Config:
 	lr_b: float = 3e-4
 	lr_head: float = 3e-4
 
-	# LoRA setup for language understanding
-	lora_rank: int = 8
-	lora_alpha: int = 8  # TODO: figure out what this is
-	lora_dropout: float = 0.1  # TODO: figure out what this is
+	# LoRA setup for language understanding 
+	# https://huggingface.co/docs/peft/v0.20.0/en/package_reference/lora#peft.LoraConfig
+	# https://huggingface.co/docs/peft/v0.20.0/en/package_reference/peft_types#peft.TaskType
+	task_type: TaskType.SEQ_CLS
+	lora_rank: int = 8 
 	target_modules: tuple[str, ...] = (
 		'query',
 		'value',
-	)  # TODO: figure out what this is
-	train_classifier_head: bool = (
-		True  # TODO: figure out how original paper trained classifier head
-	)
+	)  # names of the modules to apply adapter to
+	lora_alpha: int = 8  # alpha parameter for LoRA scaling
+	lora_dropout: float = 0.1  # dropout probability for LoRA layers
+	modules_to_save: List = ['classifier']. # modules apart from the LoRA layers to be trained and saved
+	
+	train_classifier_head: bool = False 
+
+	privacy: PrivacyConfig = field(default_factor=PrivacyConfig)
+	
 
 	results_dir: str = 'results'  # runs auto-save in this directory as <method>_<task>_seed<seed>.json
 	output: str | None = (

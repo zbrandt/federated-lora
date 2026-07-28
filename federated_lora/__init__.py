@@ -12,30 +12,29 @@ from transformers import (
 	DataCollatorWithPadding,
 )
 
-from la_lora.client import Client
-from la_lora.config import Config
-from la_lora.data import load_datasets
-from la_lora.server import Server
+from federated_lora.config import Config
+from federated_lora.data import load_datasets
+from federated_lora.model import create_peft_model
+from federated_lora.client import Client
+from federated_lora.server import Server
+from federated_lora.registry import get_method
 
 
 def build(config: Config) -> Server:
 	"""
-	Build the LA-LoRA server.
-
-	Builds the server with device, random number generator, tokenizer, train
-	sharding, evaluation dataset, base model, and PEFT model configuration.
-	Instantiates the clients with their local datasets.
+	Build the federated LoRA project server and clients.
 
 	Parameters
 	----------
 	config : Config
-		The hyperparameter configuration from config.py.
+		TODO
 
 	Returns
 	-------
 	Server
-		An instance of the Server class from server.py.
+		TODO
 	"""
+	# set the device type
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 	# set the seed for generating random numbers on all devices
@@ -45,22 +44,9 @@ def build(config: Config) -> Server:
 
 	train_shards, eval_dataset = load_datasets(config, tokenizer)
 
-	base = AutoModelForSequenceClassification.from_pretrained(
-		config.model_name, num_labels=config.num_labels
-	).to(device)
+	method = get_method(config.method)
 
-	lora_config = LoraConfig(
-		task_type=TaskType.SEQ_CLS,
-		target_modules=list(config.target_modules),
-		r=config.lora_rank,
-		lora_alpha=config.lora_alpha,
-		lora_dropout=config.lora_dropout,
-		modules_to_save=['classifier']
-		if config.train_classifier_head
-		else None,  # train classifier head as well
-	)
-
-	model = get_peft_model(base, lora_config)
+	model = create_peft_model(config, device)
 
 	collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
@@ -70,7 +56,8 @@ def build(config: Config) -> Server:
 	]
 
 	return Server(
-		config, model, clients, eval_dataset, tokenizer, device, generator
+		config, model, method, clients, eval_dataset, tokenizer, device, 
+		generator
 	)
 
 
@@ -109,5 +96,4 @@ def run(argv: list[str] | None = None) -> dict:
 
 	path.parent.mkdir(parents=True, exist_ok=True)
 	path.write_text(json.dumps(result, indent=2), encoding='utf-8')
-	print(f'[la_lora] wrote {path}', flush=True)
 	return result

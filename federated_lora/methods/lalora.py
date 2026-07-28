@@ -1,46 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from itertools import cycle
-
 import torch
-from datasets import Dataset
-from torch.optim import AdamW
-from torch.utils.data import DataLoader
-from transformers import DataCollatorWithPadding, PreTrainedModel
+from transformers import PreTrainedModel
 
-from la_lora.config import Config
-
-
-@dataclass(slots=True)
-class ClientResult:
-	state_dict: dict[str, torch.Tensor]
-	n_examples: int
-	average_loss: float
+from federated_lora.core.client import Client
+from federated_lora.methods.base import ClientResult
+from federated_lora.core.aggregate import aggregate
 
 
-class Client:
-	def __init__(
-		self,
-		client_id: int,
-		dataset: Dataset,
-		config: Config,
-		device: torch.device,
-		collator: DataCollatorWithPadding,
-	) -> None:
-		self.client_id = client_id
-		self.dataset = dataset
-		self.config = config
-		self.device = device
-		self.collator = collator
+class LaLoRA:
+    self.name = "lalora"
 
-	def local_update(
-		self,
-		model: PreTrainedModel,
-		adapter_state: dict[str, torch.Tensor],
-		round_index: int,
-	) -> ClientResult:
-		"""
+    def local_update(self, client: Client, model: PreTrainedModel, adapter_state: dict[str, torch.Tensor], round_index: int) -> ClientResult:
+        """
 		Perform a local client update.
 
 		This function splits the LoRA parameters in two from the A and B
@@ -62,14 +34,13 @@ class Client:
 		ClientResults
 			The udpated LoRA tensors plus training metrics.
 		"""
-		model.load_state_dict(
-			adapter_state, strict=False
-		)  # TODO: figure out what this is
+        # TODO
+        model.load_state_dict(adapter_state, strict=False)
 
-		# set the model in training mode
-		model.train()
+        # set the model in training mode
+        model.train()
 
-		# split LoRA parameters from A and B matrices
+        # split LoRA parameters from A and B matrices
 		lora_A, lora_B = [], []
 		head = []  # classifier head parameters
 		for name, parameter in model.named_parameters():
@@ -80,18 +51,18 @@ class Client:
 			elif 'modules_to_save' in name:
 				head.append(parameter)
 
-		# freeze all other parameters
+        # freeze all other parameters
 		for _name, parameter in model.named_parameters():
 			parameter.requires_grad = False
 		for parameter in (*lora_A, *lora_B, *head):
 			parameter.requires_grad = True
 
-		# declare respective optimizers for A and B matrix parameters
+        # declare respective optimizers for A and B matrix parameters
 		opt_A = AdamW(lora_A, lr=self.config.lr_a)
 		opt_B = AdamW(lora_B, lr=self.config.lr_b)
 		opt_head = AdamW(head, lr=self.config.lr_head) if head else None
 
-		# isolate shuffle from global stream with client and round index offset
+        # isolate shuffle from global stream with client and round index offset
 		generator = torch.Generator().manual_seed(
 			self.config.seed + self.client_id + round_index
 		)
@@ -107,7 +78,7 @@ class Client:
 
 		batches = cycle(train_dataloader)
 
-		total_loss = 0.0
+        total_loss = 0.0
 		for step in range(1, self.config.local_steps + 1):
 			batch = next(batches)
 			batch = {
@@ -147,3 +118,6 @@ class Client:
 			n_examples=len(self.dataset),
 			average_loss=total_loss / self.config.local_steps,
 		)
+    
+    def aggregate(self, states):
+        return aggregate(states)
