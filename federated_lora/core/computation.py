@@ -3,10 +3,12 @@ from __future__ import annotations
 import torch
 from transformers import PreTrainedModel
 
-from la_lora.client import Client
+from federated_lora.core.client import Client
+from federated_lora.methods.base import Method
 
 
 def client_computation(
+	method: Method,
 	selected_clients: list[Client],
 	model: PreTrainedModel,
 	global_state: dict[str, torch.Tensor],
@@ -20,6 +22,8 @@ def client_computation(
 
 	Parameters
 	----------
+	method : Method
+		TODO
 	selected_clients : list[Client]
 		A list of selected clients for one round of the federated learning
 		algorithm.
@@ -40,7 +44,7 @@ def client_computation(
 	losses = []
 
 	for client in selected_clients:
-		result = client.local_update(model, global_state, round_index)
+		result = method.local_update(client, model, global_state, round_index)
 		states.append(result.state_dict)
 		losses.append(result.average_loss)
 

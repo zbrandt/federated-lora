@@ -9,7 +9,7 @@ from transformers import (
 	PreTrainedTokenizerBase,
 )
 
-from la_lora.config import Config
+from federated_lora.config import Config
 
 
 # TODO: figure out how this works

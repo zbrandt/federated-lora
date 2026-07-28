@@ -4,7 +4,7 @@ import numpy as np
 from datasets import Dataset, load_dataset
 from transformers import PreTrainedTokenizerBase
 
-from la_lora.config import Config
+from federated_lora.config import Config
 
 
 def _tokenize(

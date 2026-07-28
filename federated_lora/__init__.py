@@ -13,10 +13,10 @@ from transformers import (
 )
 
 from federated_lora.config import Config
-from federated_lora.data import load_datasets
-from federated_lora.model import create_peft_model
-from federated_lora.client import Client
-from federated_lora.server import Server
+from federated_lora.core.client import Client
+from federated_lora.core.data import load_datasets
+from federated_lora.core.model import create_peft_model
+from federated_lora.core.server import Server
 from federated_lora.registry import get_method
 
 
@@ -56,7 +56,13 @@ def build(config: Config) -> Server:
 	]
 
 	return Server(
-		config, model, method, clients, eval_dataset, tokenizer, device, 
+		config,
+		model,
+		method,
+		clients,
+		eval_dataset,
+		tokenizer,
+		device,
 		generator
 	)
 

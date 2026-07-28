@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from la_lora.client import Client
+from federated_lora.core.client import Client
 
 
 def select_clients(

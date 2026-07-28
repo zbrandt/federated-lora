@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 
+from peft import TaskType
+
 GLUE_TASKS = {
 	'sst2': (('sentence', None), 2, 'validation'),
 	'qnli': (('question', 'sentence'), 2, 'validation'),
@@ -10,62 +12,54 @@ GLUE_TASKS = {
 	'mnli': (('premise', 'hypothesis'), 3, 'validation_matched'),
 }
 
+
 @dataclass
 class PrivacyConfig:
 	dp: bool = False
-	clip_norm: float = 1.0	# TODO
-	target_epsilon: float | None = None	# TODO
-	target_delta: float = 1e-5 # TODO
+	clip_norm: float = 1.0  # TODO
+	target_epsilon: float | None = None  # TODO
+	target_delta: float = 1e-5  # TODO
 	noise_multiplier: float | None = None  # TODO
-    smoothing: bool = True # TODO
+	smoothing: bool = True  # TODO
 
 
 @dataclass(slots=True)
 class Config:
-	method: str = (
-		'lalora'  # label only, names the output file and the plot legend
-	)
-	model_name: str = (
-		'roberta-base'  # https://huggingface.co/FacebookAI/roberta-base
-	)
-	model_class: AutoModelForSequenceClassification
-	dataset_name: str = (
-		'nyu-mll/glue'  # https://huggingface.co/datasets/nyu-mll/glue
-	)
+	method: str = 'lalora'
+	model_name: str = 'roberta-base'
+	dataset_name: str = 'nyu-mll/glue'
 	dataset_task: str = 'sst2'  # sentences from movie reviews and human annotations of their sentiment
-	train_split: str = 'train'  # TODO: figure out what this is
+	train_split: str = 'train[:1%]'  # TODO
 
 	# Federated setup for language understanding
-	num_clients: int = 20
+	num_clients: int = 4
 	client_sample_rate: float = 0.2
 	partition_strategy: str = 'noniid'
 	dirichlet_alpha: float = 0.8
-	rounds: int = 100
+	rounds: int = 2
 	local_steps: int = 20
 	batch_size: int = 16
-	max_length: int = 128  # TODO: figure out what this is
+	max_length: int = 128  # TODO
 	seed: int = 42
 	lr_a: float = 3e-4
 	lr_b: float = 3e-4
 	lr_head: float = 3e-4
 
-	# LoRA setup for language understanding 
-	# https://huggingface.co/docs/peft/v0.20.0/en/package_reference/lora#peft.LoraConfig
-	# https://huggingface.co/docs/peft/v0.20.0/en/package_reference/peft_types#peft.TaskType
-	task_type: TaskType.SEQ_CLS
-	lora_rank: int = 8 
+	# LoRA setup for language understanding
+	task_type: TaskType = TaskType.SEQ_CLS
+	lora_rank: int = 8
 	target_modules: tuple[str, ...] = (
 		'query',
 		'value',
 	)  # names of the modules to apply adapter to
 	lora_alpha: int = 8  # alpha parameter for LoRA scaling
 	lora_dropout: float = 0.1  # dropout probability for LoRA layers
-	modules_to_save: List = ['classifier']. # modules apart from the LoRA layers to be trained and saved
-	
-	train_classifier_head: bool = False 
+	modules_to_save: tuple[str, ...] = (
+		'classifier'  # modules apart from the LoRA layers to be trained and saved
+	)
+	train_classifier_head: bool = False
 
-	privacy: PrivacyConfig = field(default_factor=PrivacyConfig)
-	
+	privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
 
 	results_dir: str = 'results'  # runs auto-save in this directory as <method>_<task>_seed<seed>.json
 	output: str | None = (

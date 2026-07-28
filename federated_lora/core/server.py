@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from la_lora.config import Config
-from la_lora.eval import evaluate_accuracy
-from la_lora.server.aggregate import aggregate
-from la_lora.server.broadcast import broadcast
-from la_lora.server.computation import client_computation
-from la_lora.server.selection import select_clients
-from la_lora.server.update import update_model
+from federated_lora.config import Config
+from federated_lora.core.broadcast import broadcast
+from federated_lora.core.computation import client_computation
+from federated_lora.core.eval import evaluate_accuracy
+from federated_lora.core.selection import select_clients
+from federated_lora.core.update import update_model
 
 
 @dataclass(slots=True)
@@ -24,6 +23,7 @@ class Server:
 		self,
 		config: Config,
 		model,
+		method,
 		clients,
 		eval_dataset,
 		tokenizer,
@@ -32,6 +32,7 @@ class Server:
 	) -> None:
 		self.config = config
 		self.model = model
+		self.method = method
 		self.clients = clients
 		self.eval_dataset = eval_dataset
 		self.tokenizer = tokenizer
@@ -58,18 +59,16 @@ class Server:
 
 			# Client computation
 			states, losses = client_computation(
-				selected_clients, self.model, self.global_state, round_index
+				self.method, selected_clients, self.model, self.global_state, round_index
 			)
 
 			# Aggregation
-			aggregated = aggregate(states)
+			aggregated = self.method.aggregate(states)
 
 			# Model update
 			self.global_state = update_model(aggregated)
 
-			self.model.load_state_dict(
-				self.global_state, strict=False
-			)  # TODO: figure out what this does
+			self.model.load_state_dict(self.global_state, strict=False)  # TODO
 
 			eval_loss, accuracy = evaluate_accuracy(
 				self.model,

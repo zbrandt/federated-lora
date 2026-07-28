@@ -23,7 +23,6 @@ def main() -> None:
 
 	args, run_argv = parser.parse_known_args()
 
-	# TODO: run only works for LA-LoRA
 	if args.command == 'run':
 		from federated_lora import run
 
