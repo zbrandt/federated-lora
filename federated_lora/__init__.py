@@ -17,6 +17,10 @@ from federated_lora.core.client import Client
 from federated_lora.core.data import load_datasets
 from federated_lora.core.model import create_peft_model
 from federated_lora.core.server import Server
+from federated_lora.privacy.accountant import (
+	achieved_epsilon,
+	calibrate_noise_multiplier,
+)
 from federated_lora.registry import get_method
 
 
@@ -43,6 +47,23 @@ def build(config: Config) -> Server:
 	tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 
 	train_shards, eval_dataset = load_datasets(config, tokenizer)
+
+	# Calibrate the DP noise to the privacy budget the way the paper does:
+	# solve for the noise multiplier sigma so a subsampled Gaussian, composed
+	# over rounds * local_steps local steps at data sampling rate
+	# q = batch_size / client_dataset_size, spends exactly target_epsilon.
+	if config.privacy.dp and config.privacy.target_epsilon is not None:
+		client_dataset_size = sum(len(s) for s in train_shards) / len(
+			train_shards
+		)
+		sample_rate = config.batch_size / client_dataset_size
+		steps = config.rounds * config.local_steps
+		config.privacy.noise_multiplier = calibrate_noise_multiplier(
+			config.privacy.target_epsilon,
+			config.privacy.target_delta,
+			sample_rate,
+			steps,
+		)
 
 	method = get_method(config.method)
 
@@ -91,6 +112,21 @@ def run(argv: list[str] | None = None) -> dict:
 	server = build(config)
 	history = [asdict(metric) for metric in server.run()]
 	result = {'config': asdict(config), 'history': history}
+
+	# Record the epsilon actually spent so accuracy can be plotted against the
+	# privacy budget (matches the calibration q and step count from build()).
+	if config.privacy.dp and config.privacy.noise_multiplier is not None:
+		client_dataset_size = sum(
+			len(client.dataset) for client in server.clients
+		) / len(server.clients)
+		sample_rate = config.batch_size / client_dataset_size
+		steps = config.rounds * config.local_steps
+		result['achieved_epsilon'] = achieved_epsilon(
+			config.privacy.noise_multiplier,
+			sample_rate,
+			steps,
+			config.privacy.target_delta,
+		)
 
 	if config.output:
 		path = Path(config.output)

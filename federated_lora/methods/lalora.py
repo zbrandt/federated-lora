@@ -9,6 +9,7 @@ from transformers import PreTrainedModel
 from federated_lora.core.aggregate import aggregate
 from federated_lora.core.client import Client
 from federated_lora.methods.base import ClientResult
+from federated_lora.privacy import dp_sgd, smoothing
 
 
 class LaLoRA:
@@ -46,7 +47,6 @@ class LaLoRA:
 		# TODO
 		model.load_state_dict(adapter_state, strict=False)
 
-		# set the model in training mode
 		model.train()
 
 		lora_A, lora_B, head = client.split_adapter_params(model)
@@ -77,21 +77,47 @@ class LaLoRA:
 			for parameter in lora_B:
 				parameter.requires_grad = step % 2 == 1
 
-			# TODO: Add differential privacy via clipping and smoothing filter
+			active_key = 'lora_A' if step % 2 == 0 else 'lora_B'
 			optimizer = opt_A if step % 2 == 0 else opt_B
 			optimizer.zero_grad(
 				set_to_none=True
 			)  # reset the gradients of all optimized Tensors
-			if opt_head:
-				opt_head.zero_grad(set_to_none=True)
-			loss = model(
-				**batch
-			).loss  # access scalar loss tensor calculated with forward pass
-			loss.backward()  # backward pass and optimization step
-			optimizer.step()
-			if opt_head:
-				opt_head.step()
-			total_loss += float(loss.item())
+
+			privacy = client.config.privacy
+			if privacy.dp:
+				# per-sample clip + Gaussian noise on the active matrix only
+				grads = dp_sgd.privatize(
+					model,
+					batch,
+					active_key,
+					privacy.clip_norm,
+					privacy.noise_multiplier,
+				)
+				axis = (
+					smoothing.AXIS_A if step % 2 == 0 else smoothing.AXIS_B
+				)
+				for name, parameter in model.named_parameters():
+					if name in grads:
+						parameter.grad = (
+							smoothing.smooth(grads[name], axis)
+							if privacy.smoothing
+							else grads[name]
+						)
+				optimizer.step()
+				# classifier head stays frozen under DP (see #2); no opt_head
+				with torch.no_grad():
+					total_loss += float(model(**batch).loss.item())
+			else:
+				if opt_head:
+					opt_head.zero_grad(set_to_none=True)
+				loss = model(
+					**batch
+				).loss  # scalar loss from the forward pass
+				loss.backward()  # backward pass and optimization step
+				optimizer.step()
+				if opt_head:
+					opt_head.step()
+				total_loss += float(loss.item())
 
 		updated_state = {
 			key: value.detach().cpu().clone()
