@@ -21,13 +21,13 @@ def _tokenize(
 		)
 		out = tokenizer(
 			*pair, truncation=True, max_length=config.max_length
-		)  # TODO: figure out how this works
+		)  # TODO
 		out['labels'] = batch['label']
 		return out
 
 	return dataset.map(
 		encode, batched=True, remove_columns=dataset.column_names
-	)  # TODO: figure out how this works
+	)  # TODO
 
 
 def _partition_dirichlet(
@@ -53,15 +53,15 @@ def load_datasets(
 ) -> tuple[list[Dataset], Dataset]:
 	""" """
 	train = load_dataset(
-		config.dataset_name, config.dataset_task, split=config.train_split
+		'nyu-mll/glue', config.task, split=config.train_split
 	)
 	eval = load_dataset(
-		config.dataset_name, config.dataset_task, split=config.eval_split
+		'nyu-mll/glue', config.task, split=config.eval_split
 	)
 
 	rng = np.random.default_rng(config.seed)
 
-	# TODO: understand this
+	# TODO
 	if config.partition_strategy == 'noniid':
 		indices = _partition_dirichlet(
 			train['label'], config.num_clients, config.dirichlet_alpha, rng
@@ -73,7 +73,7 @@ def load_datasets(
 			for i in range(config.num_clients)
 		]
 
-	# TODO: understand this
+	# TODO
 	train_shards = [
 		_tokenize(train.select(idx), tokenizer, config) for idx in indices
 	]

@@ -44,7 +44,7 @@ def build(config: Config) -> Server:
 	# set the seed for generating random numbers on all devices
 	generator = torch.manual_seed(config.seed)
 
-	tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+	tokenizer = AutoTokenizer.from_pretrained("FacebookAI/roberta-base")
 
 	train_shards, eval_dataset = load_datasets(config, tokenizer)
 
@@ -133,7 +133,7 @@ def run(argv: list[str] | None = None) -> dict:
 	else:
 		path = (
 			Path(config.results_dir)
-			/ f'{config.method}_{config.dataset_task}_seed{config.seed}.json'
+			/ f'{config.method}_{config.task}_seed{config.seed}.json'
 		)
 
 	path.parent.mkdir(parents=True, exist_ok=True)

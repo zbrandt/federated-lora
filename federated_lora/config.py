@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 
-from peft import TaskType
 
 GLUE_TASKS = {
 	'sst2': (('sentence', None), 2, 'validation'),
@@ -15,7 +14,7 @@ GLUE_TASKS = {
 
 @dataclass
 class PrivacyConfig:
-	dp: bool = True
+	dp: bool = False
 	clip_norm: float = 1.0  # TODO
 	target_epsilon: float | None = 3.0  # TODO
 	target_delta: float = 1e-5  # TODO
@@ -26,9 +25,7 @@ class PrivacyConfig:
 @dataclass(slots=True)
 class Config:
 	method: str = 'lalora'
-	model_name: str = 'roberta-base'
-	dataset_name: str = 'nyu-mll/glue'
-	dataset_task: str = 'sst2'  # sentences from movie reviews and human annotations of their sentiment
+	task: str = 'sst2'  # sentences from movie reviews and human annotations of their sentiment
 	train_split: str = 'train[:1%]'  # TODO
 
 	# Federated setup for language understanding
@@ -43,10 +40,8 @@ class Config:
 	seed: int = 42
 	lr_a: float = 3e-4
 	lr_b: float = 3e-4
-	lr_head: float = 3e-4
 
 	# LoRA setup for language understanding
-	task_type: TaskType = TaskType.SEQ_CLS
 	lora_rank: int = 8
 	target_modules: tuple[str, ...] = (
 		'query',
@@ -68,15 +63,15 @@ class Config:
 
 	@property
 	def text_fields(self) -> tuple[str, str | None]:
-		return GLUE_TASKS[self.dataset_task][0]
+		return GLUE_TASKS[self.task][0]
 
 	@property
 	def num_labels(self) -> int:
-		return GLUE_TASKS[self.dataset_task][1]
+		return GLUE_TASKS[self.task][1]
 
 	@property
 	def eval_split(self) -> str:
-		return GLUE_TASKS[self.dataset_task][2]
+		return GLUE_TASKS[self.task][2]
 
 	@classmethod
 	def from_argv(cls, argv: list[str] | None = None) -> Config:
@@ -88,7 +83,7 @@ class Config:
 			help='run label used for the output filename and plot legend',
 		)
 		parser.add_argument(
-			'--task', choices=list(GLUE_TASKS), default=defaults.dataset_task
+			'--task', choices=list(GLUE_TASKS), default=defaults.task
 		)
 		parser.add_argument(
 			'--seed',
@@ -104,7 +99,7 @@ class Config:
 		args = parser.parse_args(argv)
 		return cls(
 			method=args.method,
-			dataset_task=args.task,
+			task=args.task,
 			seed=args.seed,
 			results_dir=args.results_dir,
 		)

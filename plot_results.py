@@ -69,7 +69,7 @@ def load_run(path: Path) -> Run:
 	history = payload.get('history', [])
 	return Run(
 		method=str(config.get('method', path.stem)),
-		task=str(config.get('dataset_task', 'unknown')),
+		task=str(config.get('task', 'unknown')),
 		seed=int(config.get('seed', 0)),
 		rounds=[int(entry['round_index']) for entry in history],
 		accuracy=[float(entry['accuracy']) for entry in history],
