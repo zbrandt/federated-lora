@@ -112,7 +112,7 @@ def run_rank_sweep(args: argparse.Namespace) -> list[tuple[int, int, dict]]:
                 client_epsilons=epsilons,
                 method=f"flora-rank{rank}-eps{eps_tag}",
             )
-            tag = f"rank_sweep_r{rank}_eps{eps_tag}_seed{seed}"
+            tag = f"rank_sweep_r{rank}_eps{eps_tag}_rounds{config.rounds}_nc{config.num_clients}_seed{seed}"
             result = _run_one(config, tag, Path(args.results_dir), args.force)
             runs.append((rank, seed, result))
 
@@ -135,7 +135,7 @@ def run_dp_sweep(args: argparse.Namespace) -> list[tuple[float | None, int, dict
                 client_epsilons=epsilons,
                 method=f"flora-rank{args.rank}-eps{eps_tag}",
             )
-            tag = f"dp_sweep_rank{args.rank}_eps{eps_tag}_seed{seed}"
+            tag = f"dp_sweep_rank{args.rank}_eps{eps_tag}_rounds{config.rounds}_nc{config.num_clients}_seed{seed}"
             result = _run_one(config, tag, Path(args.results_dir), args.force)
             runs.append((eps, seed, result))
 
