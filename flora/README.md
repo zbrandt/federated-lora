@@ -154,6 +154,39 @@ attempt hit — that's a strong signal of a bug elsewhere (aggregation, model
 loading, eval) rather than a DP-mechanism problem, since freezing `A` was
 specifically meant to rule that mechanism out.
 
+## Ablations (`sweep.py`)
+
+`sweep.py` at the repo root runs controlled ablations over rank and DP
+epsilon and plots the resulting accuracy trend:
+
+- `rank` — DP held fixed (or off), `lora_rank` (r_max) varied between runs.
+- `dp` — rank held fixed, the shared per-client epsilon varied between runs
+  (including a `none` no-DP baseline point).
+- `grid` — the full rank x epsilon interaction: every combination, not one
+  axis at a time. Where `rank`/`dp` can only show the two independent main
+  effects, `grid` can reveal whether the accuracy-maximizing rank actually
+  *shifts* as epsilon changes (the DP noise-amplification prediction is
+  that it should move to smaller ranks as epsilon shrinks). It also exposes
+  two flags the other two modes don't need:
+  - `--epochs N` sets `Config.local_epochs`, switching local training from a
+    fixed step count (`local_steps`, the same for every client) to `N` full
+    passes over each selected client's *own* shard — which varies in size
+    under non-iid partitioning, so this is not just a renamed `local_steps`.
+  - `--max-physical-batch-size N` wraps DP training in Opacus's
+    `BatchMemoryManager`, splitting a large logical `--batch-size` (bigger
+    batches improve DP privacy amplification) into GPU-memory-safe physical
+    sub-batches that are gradient-accumulated before the actual clip+noise+
+    step fires once per logical batch. Only meaningful under DP with
+    `--epochs` set; ignored otherwise. If wide ranks still OOM, lower this
+    further (e.g. 16 → 8) before lowering `--batch-size` itself.
+
+Every sweep point is cached to `results/sweep/<tag>.json` (the tag encodes
+rank/epsilon/rounds/num_clients/batch_size/epochs/seed, so runs at different
+settings can never silently collide) and skipped on a re-run unless
+`--force` is passed — safe to relaunch after a timeout. See `sweep.py`'s own
+module docstring (`python sweep.py --help` / `python sweep.py <mode>
+--help`) for full usage.
+
 ## Roadmap
 
 - **LA-LoRA's smoothing filter.** The optional Gaussian low-pass filter from

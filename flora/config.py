@@ -27,6 +27,11 @@ class Config:
     dirichlet_alpha: float = 0.8
     rounds: int = 100
     local_steps: int = 20
+    local_epochs: int | None = None     # if set, overrides local_steps: train `local_epochs` full passes over
+                                         # each selected client's own local shard per round instead of a fixed
+                                         # step count. Client shard sizes vary under non-iid partitioning, so
+                                         # (unlike local_steps) this gives each client a different number of
+                                         # actual optimizer steps per round -- see client.py.
     batch_size: int = 128               # matches the FLoRA paper's effective batch size (arXiv:2409.05976 Appendix
                                          # A.2: "the batch size is 128 and the micro batch size is 16" -- they
                                          # accumulate 8 micro-batches of 16 to reach it; RoBERTa-base is small
@@ -66,6 +71,15 @@ class Config:
     max_grad_norm: float = 1.0          #B + classifier head
     dp_lr: float = 1e-3                 # AdamW learning rate for the DP path (larger than `lr` to help
                                          # push through the injected noise)
+    max_physical_batch_size: int | None = None
+                                         # Opacus's BatchMemoryManager: split each DP logical batch (batch_size)
+                                         # into physical sub-batches of at most this size, gradient-accumulating
+                                         # up to the full logical batch before the actual clip+noise+step. Lets
+                                         # batch_size be large -- bigger batches give better privacy amplification
+                                         # per Abadi et al. -- without needing enough GPU memory to hold
+                                         # per-example gradients for the whole logical batch at once. Only takes
+                                         # effect under DP (target_epsilon is not None) with local_epochs set;
+                                         # ignored otherwise -- see client.py.
 
     results_dir: str = "results"        # runs auto-save in this directory as <method>_<task>_seed<seed>.json
     output: str | None = None           # explicit path override, ignores results_dir naming when set

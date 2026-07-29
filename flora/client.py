@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from itertools import cycle
 
@@ -91,10 +92,10 @@ class Client:
 
 		if self.target_epsilon is not None:
 			optimizer = AdamW([*lora_params, *head], lr=self.config.dp_lr)
-			total_loss, epsilon_spent = self._local_update_dp(model, optimizer, train_dataloader)
+			total_loss, epsilon_spent, steps_taken = self._local_update_dp(model, optimizer, train_dataloader)
 		else:
 			optimizer = AdamW([*lora_params, *head], lr=self.config.lr)
-			total_loss = self._local_update_plain(model, optimizer, train_dataloader)
+			total_loss, steps_taken = self._local_update_plain(model, optimizer, train_dataloader)
 			epsilon_spent = None
 
 		# See lora_layer.py's docstring: zero-padding the forward pass alone
@@ -119,27 +120,42 @@ class Client:
 			state_dict=updated_state,
 			n_examples=len(self.dataset),
 			n_tokens=0,
-			average_loss=total_loss / self.config.local_steps,
+			average_loss=total_loss / max(1, steps_taken),
 			uploaded_bytes=0,
 			epsilon_spent=epsilon_spent,
 		)
 
-	def _local_update_plain(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> float:
-		batches = cycle(train_dataloader)
+	def _local_update_plain(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, int]:
 		total_loss = 0.0
-		for _ in range(self.config.local_steps):
-			batch = next(batches)
-			batch = {key: value.to(self.device) for key, value in batch.items()}
+		steps_taken = 0
 
-			optimizer.zero_grad(set_to_none=True)
-			loss = model(**batch).loss
-			loss.backward()
-			optimizer.step()
-			total_loss += float(loss.item())
+		if self.config.local_epochs is not None:
+			for _ in range(self.config.local_epochs):
+				for batch in train_dataloader:
+					batch = {key: value.to(self.device) for key, value in batch.items()}
 
-		return total_loss
+					optimizer.zero_grad(set_to_none=True)
+					loss = model(**batch).loss
+					loss.backward()
+					optimizer.step()
+					total_loss += float(loss.item())
+					steps_taken += 1
+		else:
+			batches = cycle(train_dataloader)
+			for _ in range(self.config.local_steps):
+				batch = next(batches)
+				batch = {key: value.to(self.device) for key, value in batch.items()}
 
-	def _local_update_dp(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, float]:
+				optimizer.zero_grad(set_to_none=True)
+				loss = model(**batch).loss
+				loss.backward()
+				optimizer.step()
+				total_loss += float(loss.item())
+				steps_taken += 1
+
+		return total_loss, steps_taken
+
+	def _local_update_dp(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, float, int]:
 		"""
 		Train B (+ classifier head) under Opacus per-example DP-SGD.
 
@@ -167,14 +183,24 @@ class Client:
 		if self._privacy_engine is None:
 			self._privacy_engine = PrivacyEngine()
 
+		sample_rate = min(1.0, self.config.batch_size / len(self.dataset))
+
 		if self._sigma is None:
-			sample_rate = min(1.0, self.config.batch_size / len(self.dataset))
 			# A client's total future participation count isn't known in
 			# advance (depends on random per-round selection), so calibrate
 			# sigma against the EXPECTED total local steps across the whole
 			# run instead. A client selected more/less than this expectation
 			# will over/under-spend its nominal target_epsilon somewhat.
-			expected_total_steps = round(self.config.rounds * self.config.client_sample_rate) * self.config.local_steps
+			if self.config.local_epochs is not None:
+				# Epoch mode: "steps per epoch" depends on THIS client's own
+				# shard size, which varies under non-iid partitioning --
+				# unlike local_steps, this is not the same fixed number for
+				# every client.
+				steps_per_epoch = math.ceil(len(self.dataset) / self.config.batch_size)
+				local_steps_equivalent = self.config.local_epochs * steps_per_epoch
+			else:
+				local_steps_equivalent = self.config.local_steps
+			expected_total_steps = round(self.config.rounds * self.config.client_sample_rate) * local_steps_equivalent
 			self._sigma = get_noise_multiplier(
 				target_epsilon=self.target_epsilon,
 				target_delta=self.config.delta,
@@ -190,14 +216,14 @@ class Client:
 			max_grad_norm=self.config.max_grad_norm,
 		)
 
-		batches = cycle(dp_loader)
 		total_loss = 0.0
 		steps_taken = 0
-		while steps_taken < self.config.local_steps:
-			batch = next(batches)
+
+		def _run_batch(batch: dict) -> None:
+			nonlocal total_loss, steps_taken
 			if batch["input_ids"].shape[0] == 0:
 				# Poisson sampling under DP can emit an empty batch; skip it.
-				continue
+				return
 			batch = {key: value.to(self.device) for key, value in batch.items()}
 
 			dp_optimizer.zero_grad(set_to_none=True)
@@ -206,6 +232,39 @@ class Client:
 			dp_optimizer.step()
 			total_loss += float(loss.item())
 			steps_taken += 1
+
+		if self.config.local_epochs is not None:
+			# Epoch mode: one full pass over dp_loader is exactly one epoch
+			# (Opacus's Poisson-sampling loader has a fixed number of batches
+			# per pass -- ceil(len(dataset)/batch_size), matching
+			# steps_per_epoch above). BatchMemoryManager, if configured,
+			# splits each of those logical (possibly large) batches into
+			# GPU-memory-safe physical sub-batches, gradient-accumulating up
+			# to the logical batch before Opacus actually clips+noises+steps
+			# -- `dp_optimizer.step()` is still called once per physical
+			# sub-batch below, it's just a no-op except on the last one of
+			# each logical batch. Note this only counts PHYSICAL steps in
+			# `steps_taken` (used only for the average_loss denominator);
+			# `expected_total_steps` above is computed independently from
+			# LOGICAL steps, so DP accounting is unaffected either way.
+			for _ in range(self.config.local_epochs):
+				if self.config.max_physical_batch_size is not None:
+					from opacus.utils.batch_memory_manager import BatchMemoryManager
+
+					with BatchMemoryManager(
+						data_loader=dp_loader,
+						max_physical_batch_size=self.config.max_physical_batch_size,
+						optimizer=dp_optimizer,
+					) as memory_safe_loader:
+						for batch in memory_safe_loader:
+							_run_batch(batch)
+				else:
+					for batch in dp_loader:
+						_run_batch(batch)
+		else:
+			batches = cycle(dp_loader)
+			while steps_taken < self.config.local_steps:
+				_run_batch(next(batches))
 
 		epsilon_spent = self._privacy_engine.get_epsilon(self.config.delta)
 
@@ -216,4 +275,4 @@ class Client:
 		elif hasattr(dp_model, "remove_hooks"):
 			dp_model.remove_hooks()
 
-		return total_loss, epsilon_spent
+		return total_loss, epsilon_spent, steps_taken

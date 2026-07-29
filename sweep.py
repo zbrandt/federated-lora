@@ -7,11 +7,19 @@ to that axis alone:
    (r_max, homogeneous across clients) varied between runs.
 2. `dp`   sweep -- rank held constant across every run, the shared per-client
    DP epsilon varied between runs (including a `none` no-DP baseline point).
+3. `grid` sweep -- full rank x epsilon interaction grid (every combination,
+   not one axis at a time). Tests whether the accuracy-maximizing rank
+   SHIFTS as epsilon changes, which the two marginals above can't show:
+   each of those holds the other axis fixed at a single value, so a rank
+   effect that only appears at small epsilon (as DP noise-amplification
+   theory predicts -- optimal rank should move to SMALLER ranks as epsilon
+   shrinks, since noise added to B scales into the reconstructed update
+   alongside signal that a wider rank can't outrun) wouldn't show up there.
 
 Every run is a full flora.build(config) + server.run(), so this is exactly
 as expensive as running main.py that many times -- there is no shortcut.
 Run with --smoke first to confirm plumbing before committing to a real
-(likely multi-hour) sweep.
+(likely multi-hour, and for `grid`, likely multi-day) sweep.
 
 Usage
 -----
@@ -23,6 +31,12 @@ Usage
 
     # both, with default sweep points
     uv run python sweep.py both --seeds 42
+
+    # full rank x epsilon interaction grid, large logical batch split into
+    # GPU-memory-safe physical sub-batches under DP
+    uv run python sweep.py grid \
+        --ranks 2 4 8 16 32 64 --epsilons 1 2 4 8 --seeds 0 1 2 3 4 \
+        --batch-size 512 --max-physical-batch-size 16 --epochs 3
 
     # fast plumbing check before a real sweep
     uv run python sweep.py rank --smoke
@@ -142,6 +156,51 @@ def run_dp_sweep(args: argparse.Namespace) -> list[tuple[float | None, int, dict
     return runs
 
 
+def run_grid_sweep(args: argparse.Namespace) -> list[tuple[int, float | None, int, dict]]:
+    """
+    Full rank x epsilon grid -- every combination, not one axis at a time.
+    Unlike `rank`/`dp` above, this can reveal an INTERACTION: whether the
+    accuracy-maximizing rank shifts as epsilon changes, rather than just the
+    two independent main effects.
+    """
+    runs: list[tuple[int, float | None, int, dict]] = []
+
+    overrides: dict = {}
+    if args.batch_size is not None:
+        overrides["batch_size"] = args.batch_size
+    if args.epochs is not None:
+        overrides["local_epochs"] = args.epochs
+    if args.max_physical_batch_size is not None:
+        overrides["max_physical_batch_size"] = args.max_physical_batch_size
+
+    for rank in args.ranks:
+        for eps in args.epsilons:
+            eps_tag = "none" if eps is None else _fmt(eps)
+            for seed in args.seeds:
+                base = _base_config(args, seed)
+                if overrides:
+                    base = replace(base, **overrides)
+
+                epsilons = None if eps is None else [eps] * base.num_clients
+                config = replace(
+                    base,
+                    lora_rank=rank,
+                    client_ranks=None,
+                    client_epsilons=epsilons,
+                    method=f"flora-rank{rank}-eps{eps_tag}",
+                )
+                tag = (
+                    f"grid_sweep_r{rank}_eps{eps_tag}"
+                    f"_rounds{config.rounds}_nc{config.num_clients}"
+                    f"_bs{config.batch_size}_ep{config.local_epochs}"
+                    f"_seed{seed}"
+                )
+                result = _run_one(config, tag, Path(args.results_dir), args.force)
+                runs.append((rank, eps, seed, result))
+
+    return runs
+
+
 def _aggregate_by_x(runs: list[tuple], tail: int) -> tuple[list, list[float], list[float]]:
     """Group (x, seed, result) triples by x; mean/std final accuracy across seeds."""
     by_x: dict = defaultdict(list)
@@ -207,6 +266,46 @@ def plot_dp_trend(runs: list[tuple[float | None, int, dict]], tail: int, output_
     print(f"[sweep] wrote {output_path}")
 
 
+def plot_grid_trend(runs: list[tuple[int, float | None, int, dict]], tail: int, output_path: Path) -> None:
+    """One accuracy-vs-rank line per epsilon value -- if optimal rank shifts
+    with epsilon (the interaction this sweep exists to test), each line's
+    peak sits at a different x position rather than all lines peaking at
+    the same rank."""
+    by_eps: dict = defaultdict(lambda: defaultdict(list))
+    for rank, eps, _seed, result in runs:
+        by_eps[eps][rank].append(_final_accuracy(result, tail))
+
+    eps_values = sorted(by_eps, key=lambda v: (v is None, v))
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    plt.figure(figsize=(8, 5))
+    print("\n[grid] accuracy-maximizing rank per epsilon:")
+    for i, eps in enumerate(eps_values):
+        ranks = sorted(by_eps[eps])
+        means = [float(np.mean(by_eps[eps][r])) for r in ranks]
+        stds = [float(np.std(by_eps[eps][r])) for r in ranks]
+        label = "no-DP" if eps is None else f"eps={_fmt(eps)}"
+
+        plt.errorbar(ranks, means, yerr=stds, marker="o", capsize=3, linewidth=2,
+                     label=label, color=colors[i % len(colors)])
+
+        best_rank = ranks[int(np.argmax(means))]
+        print(f"  {label:>10}: best rank = {best_rank:>3}  (accuracy={max(means):.4f})")
+
+    plt.xlabel("LoRA rank (r_max)")
+    plt.ylabel(f"Accuracy (mean of last {tail} rounds)")
+    plt.title("Accuracy vs. rank, by privacy budget")
+    plt.xscale("log", base=2)
+    plt.grid(True, alpha=0.3)
+    plt.ylim(0.0, 1.0)
+    plt.legend()
+    plt.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+    print(f"\n[sweep] wrote {output_path}")
+
+
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
     parser.add_argument("--task", choices=list(GLUE_TASKS), default="sst2")
@@ -242,6 +341,20 @@ def main() -> None:
     both_p.add_argument("--rank", type=int, default=8)
     both_p.add_argument("--epsilons", type=_parse_epsilon, nargs="+", default=[None, 1.0, 2.0, 4.0, 8.0])
 
+    grid_p = sub.add_parser("grid", help="full rank x epsilon interaction grid")
+    _add_common_args(grid_p)
+    grid_p.add_argument("--ranks", type=int, nargs="+", default=[2, 4, 8, 16, 32, 64])
+    grid_p.add_argument("--epsilons", type=_parse_epsilon, nargs="+", default=[1.0, 2.0, 4.0, 8.0])
+    grid_p.add_argument("--batch-size", type=int, default=None,
+                         help="override Config.batch_size for every run (larger batches improve DP privacy "
+                              "amplification but need --max-physical-batch-size to fit in GPU memory)")
+    grid_p.add_argument("--max-physical-batch-size", type=int, default=None,
+                         help="Opacus BatchMemoryManager cap: split each DP logical batch into physical "
+                              "sub-batches of at most this size; only takes effect under DP with --epochs set")
+    grid_p.add_argument("--epochs", type=int, default=None,
+                         help="full passes over each selected client's local shard per round "
+                              "(sets Config.local_epochs, replacing the fixed local_steps count)")
+
     args = parser.parse_args()
     figures_dir = Path(args.figures_dir)
 
@@ -251,6 +364,9 @@ def main() -> None:
     if args.sweep in ("dp", "both"):
         runs = run_dp_sweep(args)
         plot_dp_trend(runs, args.tail, figures_dir / "dp_trend.png")
+    if args.sweep == "grid":
+        runs = run_grid_sweep(args)
+        plot_grid_trend(runs, args.tail, figures_dir / "grid_trend.png")
 
 
 if __name__ == "__main__":
