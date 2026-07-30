@@ -38,6 +38,7 @@ class Config:
 	seed: int = 42
 	lr_a: float = 3e-4
 	lr_b: float = 3e-4
+	lr_head: float = 3e-4
 
 	# LoRA setup for language understanding
 	lora_rank: int = 8

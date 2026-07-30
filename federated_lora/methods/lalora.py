@@ -115,32 +115,32 @@ class LaLoRA:
 
 			total_loss += float(loss.item())
 
-		# TODO: return factors (A, B) instead of model
-		# TODO: where does to_standard_module() come from?
-		return model.to_standard_module(), total_loss
+		# Unwrap the Opacus GradSampleModule so the server sees a plain module
+		# whose parameters were updated in place; the server snapshots the
+		# trainable tensors it needs from it.
+		return model.to_standard_module(), total_loss / max(1, local_steps)
 
-	def aggregate(self, global_model: Module, client_uploads: list[Module]):
+	def aggregate(
+		self, client_uploads: list[dict[str, torch.Tensor]]
+	) -> dict[str, torch.Tensor]:
 		"""
-		TODO
+		Average each trainable tensor across the client uploads (FedAvg).
 
 		Parameters
 		----------
-		TODO
+		client_uploads : list[dict[str, torch.Tensor]]
+			One state-dict snapshot per client, each restricted to the
+			federated (trainable) keys: the LoRA A/B factors and the
+			classification head.
 
 		Returns
 		-------
-		TODO
+		dict[str, torch.Tensor]
+			The new global state, i.e. the per-key mean over clients.
 		"""
-		global_dict = global_model.state_dict()
-
-		for key in global_dict:
-			if 'lora_' in key:
-				global_dict[key] = torch.stack(
-					[
-						upload.state_dict()[key].float()
-						for upload in client_uploads
-					],
-					dim=0,
-				).mean(dim=0)
-
-		return global_dict
+		return {
+			key: torch.stack(
+				[upload[key].float() for upload in client_uploads], dim=0
+			).mean(dim=0)
+			for key in client_uploads[0]
+		}

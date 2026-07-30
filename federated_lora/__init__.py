@@ -67,12 +67,18 @@ def build(config: Config) -> Server:
 	# TODO
 	model = create_peft_model(config, device)
 
-	params_A, params_B = [], []
+	params_A, params_B, params_head = [], [], []
 	for name, param in model.named_parameters():
+		if not param.requires_grad:
+			continue
 		if 'lora_A' in name:
 			params_A.append(param)
 		elif 'lora_B' in name:
 			params_B.append(param)
+		else:
+			# the sequence-classification head is added to ``modules_to_save`` 
+			# by PEFT for TaskType.SEQ_CLS)
+			params_head.append(param)
 
 	# TODO
 	collator = DataCollatorWithPadding(tokenizer=tokenizer)
@@ -86,6 +92,7 @@ def build(config: Config) -> Server:
 			[
 				{'params': params_A, 'lr': config.lr_a},
 				{'params': params_B, 'lr': config.lr_b},
+				{'params': params_head, 'lr': config.lr_head},
 			]
 		)
 

@@ -33,10 +33,19 @@ class Server:
 		self.max_grad_norm = max_grad_norm
 		self.test_dataloader = test_dataloader
 		self.device = device
+
+		# trainable parameters are the LoRA A and B matrix parameters and the 
+		# sequence-classification head which PEFT keeps in ``modules_to_save`` 
+		# for TaskType.SEQ_CLS. 
+		self.trainable_parameters = {
+			name
+			for name, param in model.named_parameters()
+			if param.requires_grad
+		}
 		self.global_state = {
 			key: value.detach().cpu().clone()
 			for key, value in model.state_dict().items()
-			if 'lora_' in key
+			if key in self.trainable_parameters
 		}
 
 	def run(self):
@@ -51,13 +60,14 @@ class Server:
 			)[:k]
 			selected_clients = [self.clients[i] for i in picks.tolist()]
 
-			# broadcast the current global model
-			self.model.load_state_dict(self.global_state, strict=False)
-
-			# compute local client uploads
 			client_uploads, losses = [], []
 			for client in selected_clients:
-				upload, loss = self.method.local_update(
+
+				# broadcast global model to client
+				self.model.load_state_dict(self.global_state, strict=False)
+
+				# compute local client uploads
+				_, loss = self.method.local_update(
 					model=self.model,
 					optimizer=client.optimizer,
 					train_dataloader=client.dataloader,
@@ -66,14 +76,22 @@ class Server:
 					local_steps=client.steps,
 					device=self.device,
 				)
+
+				# snapshot this client's trained parameters before next client 
+				# overwrites the shared model in place
+				upload = {
+					key: value.detach().cpu().clone()
+					for key, value in self.model.state_dict().items()
+					if key in self.trainable_parameters
+				}
 				client_uploads.append(upload)
 				losses.append(loss)
 
-			# aggregate client uploads
-			global_dict = self.method.aggregate(self.model, client_uploads)
+			# aggregate client uploads into the new global state
+			self.global_state = self.method.aggregate(client_uploads)
 
-			# TODO: update the global model
-			self.model.load_state_dict(global_dict, strict=False)
+			# update the global model with the aggregated weights
+			self.model.load_state_dict(self.global_state, strict=False)
 
 			eval_loss, accuracy = evaluate(
 				self.model,
