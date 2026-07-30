@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import torch
 from datasets import Dataset
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 
@@ -18,9 +19,13 @@ class Client:
 	def __init__(
 		self,
 		id: int,
-		train_shard: Dataset,
-		train_dataloader: DataLoader,
+		shard: Dataset,
+		steps: int,
+		dataloader: DataLoader,
+		optimizer: AdamW,
 	) -> None:
 		self.id = id
-		self.train_shard = train_shard
-		self.train_dataloader = train_dataloader
+		self.shard = shard
+		self.steps = steps
+		self.dataloader = dataloader
+		self.optimizer = optimizer

@@ -41,8 +41,4 @@ def create_peft_model(config: Config, device: torch.device) -> PeftModel:
 
 	model = get_peft_model(base, peft_config)
 
-	for name, parameter in model.named_parameters():
-		if 'lora_A' not in name and 'lora_B' not in name:
-			parameter.requires_grad = False
-
 	return model

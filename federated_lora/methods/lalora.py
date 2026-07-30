@@ -9,8 +9,6 @@ from torch.nn import functional as F
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
-from federated_lora.core.aggregate import aggregate
-
 
 class LaLoRA:
 	name = 'lalora'
@@ -52,12 +50,13 @@ class LaLoRA:
 
 	def local_update(
 		self,
-		device: str,
 		model: Module,
+		optimizer: AdamW,
 		train_dataloader: DataLoader,
 		noise_multiplier: float,
 		max_grad_norm: float,
 		local_steps: int,
+		device: str,
 	):
 		"""
 		TODO
@@ -70,22 +69,6 @@ class LaLoRA:
 		-------
 		TODO
 		"""
-		# TODO: move this all to model.py
-		params_A, params_B = [], []
-		for name, param in model.named_parameters():
-			if 'lora_A' in name:
-				params_A.append(param)
-			elif 'lora_B' in name:
-				params_B.append(param)
-
-		# TODO: fix learning rates, define optimizer in server.py
-		optimizer = AdamW(
-			[
-				{'params': params_A, 'lr': 1e-3},
-				{'params': params_B, 'lr': 1e-3},
-			]
-		)
-
 		model.train()
 
 		privacy_engine = PrivacyEngine()
@@ -95,6 +78,7 @@ class LaLoRA:
 			data_loader=train_dataloader,
 			noise_multiplier=noise_multiplier,
 			max_grad_norm=max_grad_norm,
+			poisson_sampling=False,  # TODO
 		)
 
 		batches = cycle(train_dataloader)

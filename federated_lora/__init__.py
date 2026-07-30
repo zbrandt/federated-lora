@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 from opacus.accountants.utils import get_noise_multiplier
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import (
 	AutoTokenizer,
@@ -45,14 +46,14 @@ def build(config: Config) -> Server:
 	tokenizer = AutoTokenizer.from_pretrained('FacebookAI/roberta-base')
 
 	# TODO
-	train_shards, eval_dataset = load_datasets(config, tokenizer)
+	train_shards, test_dataset = load_datasets(config, tokenizer)
 
 	shard_size = sum(len(s) for s in train_shards) / len(train_shards)
 	sample_rate = config.batch_size / shard_size
 	# steps is the number of noised gradient releases that touch data — one per
 	# local step, i.e. ``rounds * local_steps`` (both A- and B-steps consume a
 	# batch, so both count)
-	steps = config.rounds * config.local_steps
+	steps = config.global_rounds * config.local_steps
 	config.privacy.noise_multiplier = get_noise_multiplier(
 		target_epsilon=config.privacy.target_epsilon,
 		target_delta=config.privacy.target_delta,
@@ -66,6 +67,13 @@ def build(config: Config) -> Server:
 	# TODO
 	model = create_peft_model(config, device)
 
+	params_A, params_B = [], []
+	for name, param in model.named_parameters():
+		if 'lora_A' in name:
+			params_A.append(param)
+		elif 'lora_B' in name:
+			params_B.append(param)
+
 	# TODO
 	collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
@@ -74,24 +82,50 @@ def build(config: Config) -> Server:
 	for i, shard in enumerate(train_shards):
 		generator = torch.Generator().manual_seed(config.seed + i)
 
+		optimizer = AdamW(
+			[
+				{'params': params_A, 'lr': config.lr_a},
+				{'params': params_B, 'lr': config.lr_b},
+			]
+		)
+
 		train_dataloader = DataLoader(
 			shard,
-			config.batch_size,
+			batch_size=config.batch_size,
 			shuffle=True,
 			collate_fn=collator,
 			generator=generator,
 		)
-		clients.append(Client(i, shard, train_dataloader))
+
+		clients.append(
+			Client(
+				id=i,
+				shard=shard,
+				steps=config.local_steps,
+				dataloader=train_dataloader,
+				optimizer=optimizer,
+			)
+		)
+
+	# TODO
+	test_dataloader = DataLoader(
+		test_dataset,
+		batch_size=config.batch_size,
+		shuffle=False,
+		collate_fn=collator,
+	)
 
 	return Server(
-		config,
-		model,
-		method,
-		clients,
-		eval_dataset,
-		tokenizer,
-		device,
-		generator,
+		model=model,
+		method=method,
+		rounds=config.global_rounds,
+		sample_rate=config.client_sample_rate,
+		clients=clients,
+		generator=generator,
+		noise_multiplier=config.privacy.noise_multiplier,  # TODO
+		max_grad_norm=config.privacy.clip_norm,  # TODO
+		test_dataloader=test_dataloader,
+		device=device,
 	)
 
 
@@ -117,16 +151,16 @@ def run(argv: list[str] | None = None) -> dict:
 	"""
 	config = Config.from_argv(argv)
 	server = build(config)
-	history = [asdict(metric) for metric in server.run()]
+	history = server.run()
 	result = {'config': asdict(config), 'history': history}
 
 	# Record the epsilon actually spent so accuracy can be plotted against the
 	# privacy budget (matches the calibration q and step count from build()).
 	client_dataset_size = sum(
-		len(client.train_shard) for client in server.clients
+		len(client.shard) for client in server.clients
 	) / len(server.clients)
 	sample_rate = config.batch_size / client_dataset_size
-	steps = config.rounds * config.local_steps
+	steps = config.global_rounds * config.local_steps
 	result['achieved_epsilon'] = achieved_epsilon(
 		config.privacy.noise_multiplier,
 		sample_rate,

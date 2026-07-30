@@ -31,7 +31,7 @@ class Config:
 	client_sample_rate: float = 0.2
 	partition_strategy: str = 'noniid'
 	dirichlet_alpha: float = 0.8
-	rounds: int = 2
+	global_rounds: int = 2
 	local_steps: int = 20
 	batch_size: int = 16
 	max_length: int = 128  # TODO
