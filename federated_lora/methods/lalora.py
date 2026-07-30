@@ -3,133 +3,160 @@ from __future__ import annotations
 from itertools import cycle
 
 import torch
+from opacus import PrivacyEngine
+from torch.nn import Module
+from torch.nn import functional as F
 from torch.optim import AdamW
-from transformers import PreTrainedModel
+from torch.utils.data import DataLoader
 
 from federated_lora.core.aggregate import aggregate
-from federated_lora.core.client import Client
-from federated_lora.methods.base import ClientResult
-from federated_lora.privacy import dp_sgd, smoothing
 
 
 class LaLoRA:
 	name = 'lalora'
 
-	def local_update(
-		self,
-		client: Client,
-		model: PreTrainedModel,
-		adapter_state: dict[str, torch.Tensor],
-		round_index: int,
-	) -> ClientResult:
+	def smooth(self, grad: torch.Tensor, mode: str) -> torch.Tensor:
 		"""
-		Perform a local client update.
-
-		This function splits the LoRA parameters in two from the A and B
-		matrices, freezes all other parameters, and performs part of the local
-		client update from the LA-LoRA framework through alternating updates of
-		the A and B matrices across local steps.
+		TODO
 
 		Parameters
 		----------
-		model : PreTrainedModel
-			Model with LoRA adapters modules to train.
-		adapter_state : dict[str, torch.Tensor]
-			Global LoRA parameters to load into ``model`` before training.
-		round_index : int
-			The global round index used for seeding client's data shuffles.
+		TODO
 
 		Returns
 		-------
-		ClientResults
-			The udpated LoRA tensors plus training metrics.
+		TODO
 		"""
-		# TODO
-		model.load_state_dict(adapter_state, strict=False)
+		if grad is None:
+			return None
+
+		# Fixed 1D Gaussian kernel G_s
+		kernel = (
+			torch.tensor([1.0, 4.0, 6.0, 4.0, 1.0], device=grad.device) / 16.0
+		)
+		kernel = kernel.view(1, 1, 5)
+
+		if mode == 'row':  # Matrix A: shape (r, n)
+			r, _n = grad.shape
+			x = grad.unsqueeze(1)  # Shape: (r, 1, n)
+			x_padded = F.pad(x, (2, 2), mode='reflect')
+			filtered = F.conv1d(x_padded, kernel).squeeze(1)
+			return filtered
+
+		else:  # Matrix B: shape (m, r)
+			_m, _r = grad.shape
+			x = grad.T.unsqueeze(1)  # Transpose to (r, 1, m)
+			x_padded = F.pad(x, (2, 2), mode='reflect')
+			filtered = F.conv1d(x_padded, kernel).squeeze(1).T
+			return filtered
+
+	def local_update(
+		self,
+		device: str,
+		model: Module,
+		train_dataloader: DataLoader,
+		noise_multiplier: float,
+		max_grad_norm: float,
+		local_steps: int,
+	):
+		"""
+		TODO
+
+		Parameters
+		----------
+		TODO
+
+		Returns
+		-------
+		TODO
+		"""
+		# TODO: move this all to model.py
+		params_A, params_B = [], []
+		for name, param in model.named_parameters():
+			if 'lora_A' in name:
+				params_A.append(param)
+			elif 'lora_B' in name:
+				params_B.append(param)
+
+		# TODO: fix learning rates, define optimizer in server.py
+		optimizer = AdamW(
+			[
+				{'params': params_A, 'lr': 1e-3},
+				{'params': params_B, 'lr': 1e-3},
+			]
+		)
 
 		model.train()
 
-		lora_A, lora_B, head = client.split_adapter_params(model)
-
-		# freeze all other parameters
-		for parameter in model.parameters():
-			parameter.requires_grad = False
-		for parameter in (*lora_A, *lora_B, *head):
-			parameter.requires_grad = True
-
-			# declare respective optimizers for A and B matrix parameters
-		opt_A = AdamW(lora_A, lr=client.config.lr_a)
-		opt_B = AdamW(lora_B, lr=client.config.lr_b)
-		opt_head = AdamW(head, lr=client.config.lr_head) if head else None
-
-		batches = cycle(client.dataloader(round_index))
-
-		total_loss = 0.0
-		for step in range(1, client.config.local_steps + 1):
-			batch = next(batches)
-			batch = {
-				key: value.to(client.device) for key, value in batch.items()
-			}  # move batch items to the correct device
-
-			for parameter in lora_A:
-				parameter.requires_grad = step % 2 == 0
-
-			for parameter in lora_B:
-				parameter.requires_grad = step % 2 == 1
-
-			active_key = 'lora_A' if step % 2 == 0 else 'lora_B'
-			optimizer = opt_A if step % 2 == 0 else opt_B
-			optimizer.zero_grad(
-				set_to_none=True
-			)  # reset the gradients of all optimized Tensors
-
-			privacy = client.config.privacy
-			if privacy.dp:
-				# per-sample clip + Gaussian noise on the active matrix only
-				grads = dp_sgd.privatize(
-					model,
-					batch,
-					active_key,
-					privacy.clip_norm,
-					privacy.noise_multiplier,
-				)
-				axis = (
-					smoothing.AXIS_A if step % 2 == 0 else smoothing.AXIS_B
-				)
-				for name, parameter in model.named_parameters():
-					if name in grads:
-						parameter.grad = (
-							smoothing.smooth(grads[name], axis)
-							if privacy.smoothing
-							else grads[name]
-						)
-				optimizer.step()
-				# classifier head stays frozen under DP (see #2); no opt_head
-				with torch.no_grad():
-					total_loss += float(model(**batch).loss.item())
-			else:
-				if opt_head:
-					opt_head.zero_grad(set_to_none=True)
-				loss = model(
-					**batch
-				).loss  # scalar loss from the forward pass
-				loss.backward()  # backward pass and optimization step
-				optimizer.step()
-				if opt_head:
-					opt_head.step()
-				total_loss += float(loss.item())
-
-		updated_state = {
-			key: value.detach().cpu().clone()
-			for key, value in model.state_dict().items()
-			if 'lora_' in key or 'modules_to_save' in key
-		}
-
-		return ClientResult(
-			state_dict=updated_state,
-			n_examples=len(client.dataset),
-			average_loss=total_loss / client.config.local_steps,
+		privacy_engine = PrivacyEngine()
+		model, optimizer, train_dataloader = privacy_engine.make_private(
+			module=model,
+			optimizer=optimizer,
+			data_loader=train_dataloader,
+			noise_multiplier=noise_multiplier,
+			max_grad_norm=max_grad_norm,
 		)
 
-	def aggregate(self, states):
-		return aggregate(states)
+		batches = cycle(train_dataloader)
+
+		total_loss = 0.0
+		for k in range(1, local_steps + 1):
+			batch = next(batches)
+			batch = {key: value.to(device) for key, value in batch.items()}
+
+			optimizer.zero_grad()
+			loss = model(**batch).loss
+			loss.backward()
+
+			if optimizer.pre_step():
+				is_odd = k % 2 != 0
+				for name, parameter in model.named_parameters():
+					if parameter.grad is None:
+						continue
+					if 'lora_A' in name:
+						parameter.grad = (
+							self.smooth(parameter.grad, mode='row')
+							if not is_odd
+							else None
+						)
+					elif 'lora_B' in name:
+						parameter.grad = (
+							self.smooth(parameter.grad, mode='col')
+							if is_odd
+							else None
+						)
+
+				optimizer.original_optimizer.step()
+				optimizer.zero_grad()
+
+			total_loss += float(loss.item())
+
+		# TODO: return factors (A, B) instead of model
+		# TODO: where does to_standard_module() come from?
+		return model.to_standard_module(), total_loss
+
+	def aggregate(self, global_model: Module, client_uploads: list[Module]):
+		"""
+		TODO
+
+		Parameters
+		----------
+		TODO
+
+		Returns
+		-------
+		TODO
+		"""
+		global_dict = global_model.state_dict()
+
+		for key in global_dict:
+			if 'lora_' in key:
+				global_dict[key] = torch.stack(
+					[
+						upload.state_dict()[key].float()
+						for upload in client_uploads
+					],
+					dim=0,
+				).mean(dim=0)
+
+		return global_dict

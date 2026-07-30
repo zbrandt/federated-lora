@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 
-
 GLUE_TASKS = {
 	'sst2': (('sentence', None), 2, 'validation'),
 	'qnli': (('question', 'sentence'), 2, 'validation'),
@@ -14,11 +13,10 @@ GLUE_TASKS = {
 
 @dataclass
 class PrivacyConfig:
-	dp: bool = False
 	clip_norm: float = 1.0  # TODO
-	target_epsilon: float | None = 3.0  # TODO
+	target_epsilon: float = 3.0  # TODO
 	target_delta: float = 1e-5  # TODO
-	# noise_multiplier: float | None = None  # TODO
+	noise_multiplier: float | None = None  # TODO
 	smoothing: bool = True  # TODO
 
 
@@ -49,10 +47,6 @@ class Config:
 	)  # names of the modules to apply adapter to
 	lora_alpha: int = 8  # alpha parameter for LoRA scaling
 	lora_dropout: float = 0.0  # dropout probability for LoRA layers
-	modules_to_save: tuple[str, ...] = (
-		'classifier'  # modules apart from the LoRA layers to be trained and saved
-	)
-	train_classifier_head: bool = False
 
 	privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
 

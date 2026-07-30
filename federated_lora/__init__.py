@@ -5,9 +5,9 @@ from dataclasses import asdict
 from pathlib import Path
 
 import torch
-from peft import LoraConfig, TaskType, get_peft_model
+from opacus.accountants.utils import get_noise_multiplier
+from torch.utils.data import DataLoader
 from transformers import (
-	AutoModelForSequenceClassification,
 	AutoTokenizer,
 	DataCollatorWithPadding,
 )
@@ -17,10 +17,7 @@ from federated_lora.core.client import Client
 from federated_lora.core.data import load_datasets
 from federated_lora.core.model import create_peft_model
 from federated_lora.core.server import Server
-from federated_lora.privacy.accountant import (
-	achieved_epsilon,
-	calibrate_noise_multiplier,
-)
+from federated_lora.privacy.accountant import achieved_epsilon
 from federated_lora.registry import get_method
 
 
@@ -44,37 +41,47 @@ def build(config: Config) -> Server:
 	# set the seed for generating random numbers on all devices
 	generator = torch.manual_seed(config.seed)
 
-	tokenizer = AutoTokenizer.from_pretrained("FacebookAI/roberta-base")
+	# TODO
+	tokenizer = AutoTokenizer.from_pretrained('FacebookAI/roberta-base')
 
+	# TODO
 	train_shards, eval_dataset = load_datasets(config, tokenizer)
 
-	# Calibrate the DP noise to the privacy budget the way the paper does:
-	# solve for the noise multiplier sigma so a subsampled Gaussian, composed
-	# over rounds * local_steps local steps at data sampling rate
-	# q = batch_size / client_dataset_size, spends exactly target_epsilon.
-	if config.privacy.dp and config.privacy.target_epsilon is not None:
-		client_dataset_size = sum(len(s) for s in train_shards) / len(
-			train_shards
-		)
-		sample_rate = config.batch_size / client_dataset_size
-		steps = config.rounds * config.local_steps
-		config.privacy.noise_multiplier = calibrate_noise_multiplier(
-			config.privacy.target_epsilon,
-			config.privacy.target_delta,
-			sample_rate,
-			steps,
-		)
+	shard_size = sum(len(s) for s in train_shards) / len(train_shards)
+	sample_rate = config.batch_size / shard_size
+	# steps is the number of noised gradient releases that touch data — one per
+	# local step, i.e. ``rounds * local_steps`` (both A- and B-steps consume a
+	# batch, so both count)
+	steps = config.rounds * config.local_steps
+	config.privacy.noise_multiplier = get_noise_multiplier(
+		target_epsilon=config.privacy.target_epsilon,
+		target_delta=config.privacy.target_delta,
+		sample_rate=sample_rate,
+		epochs=steps,
+	)
 
+	# TODO
 	method = get_method(config.method)
 
+	# TODO
 	model = create_peft_model(config, device)
 
+	# TODO
 	collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
-	clients = [
-		Client(i, shard, config, device, collator)
-		for i, shard in enumerate(train_shards)
-	]
+	# TODO
+	clients = []
+	for i, shard in enumerate(train_shards):
+		generator = torch.Generator().manual_seed(config.seed + i)
+
+		train_dataloader = DataLoader(
+			shard,
+			config.batch_size,
+			shuffle=True,
+			collate_fn=collator,
+			generator=generator,
+		)
+		clients.append(Client(i, shard, train_dataloader))
 
 	return Server(
 		config,
@@ -84,7 +91,7 @@ def build(config: Config) -> Server:
 		eval_dataset,
 		tokenizer,
 		device,
-		generator
+		generator,
 	)
 
 
@@ -115,18 +122,17 @@ def run(argv: list[str] | None = None) -> dict:
 
 	# Record the epsilon actually spent so accuracy can be plotted against the
 	# privacy budget (matches the calibration q and step count from build()).
-	if config.privacy.dp and config.privacy.noise_multiplier is not None:
-		client_dataset_size = sum(
-			len(client.dataset) for client in server.clients
-		) / len(server.clients)
-		sample_rate = config.batch_size / client_dataset_size
-		steps = config.rounds * config.local_steps
-		result['achieved_epsilon'] = achieved_epsilon(
-			config.privacy.noise_multiplier,
-			sample_rate,
-			steps,
-			config.privacy.target_delta,
-		)
+	client_dataset_size = sum(
+		len(client.train_shard) for client in server.clients
+	) / len(server.clients)
+	sample_rate = config.batch_size / client_dataset_size
+	steps = config.rounds * config.local_steps
+	result['achieved_epsilon'] = achieved_epsilon(
+		config.privacy.noise_multiplier,
+		sample_rate,
+		steps,
+		config.privacy.target_delta,
+	)
 
 	if config.output:
 		path = Path(config.output)

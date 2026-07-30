@@ -4,10 +4,8 @@ from dataclasses import dataclass
 
 from federated_lora.config import Config
 from federated_lora.core.broadcast import broadcast
-from federated_lora.core.computation import client_computation
 from federated_lora.core.eval import evaluate_accuracy
 from federated_lora.core.selection import select_clients
-from federated_lora.core.update import update_model
 
 
 @dataclass(slots=True)
@@ -41,7 +39,7 @@ class Server:
 		self.global_state = {
 			key: value.detach().cpu().clone()
 			for key, value in model.state_dict().items()
-			if 'lora_' in key or 'modules_to_save' in key
+			if 'lora_' in key
 		}
 
 	def run(self) -> list[RoundMetrics]:
@@ -49,7 +47,6 @@ class Server:
 		history: list[RoundMetrics] = []
 
 		for round_index in range(1, self.config.rounds + 1):
-			# Client selection
 			selected_clients = select_clients(
 				self.clients, self.config.client_sample_rate, self.generator
 			)
@@ -58,17 +55,24 @@ class Server:
 			broadcast(self.model, self.global_state)
 
 			# Client computation
-			states, losses = client_computation(
-				self.method, selected_clients, self.model, self.global_state, round_index
-			)
+			client_uploads, losses = [], []
+			for client in selected_clients:
+				upload, loss = self.method.local_update(
+					self.device,
+					self.model,
+					client.train_dataloader,
+					self.config.privacy.noise_multiplier,
+					self.config.privacy.clip_norm,
+					self.config.local_steps,
+				)
+				client_uploads.append(upload)
+				losses.append(loss)
 
 			# Aggregation
-			aggregated = self.method.aggregate(states)
+			global_dict = self.method.aggregate(self.model, client_uploads)
 
-			# Model update
-			self.global_state = update_model(aggregated)
-
-			self.model.load_state_dict(self.global_state, strict=False)  # TODO
+			# TODO: model update
+			self.model.load_state_dict(global_dict, strict=False)
 
 			eval_loss, accuracy = evaluate_accuracy(
 				self.model,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from datasets import Dataset, load_dataset
+from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizerBase
 
 from federated_lora.config import Config
@@ -52,12 +53,8 @@ def load_datasets(
 	config: Config, tokenizer: PreTrainedTokenizerBase
 ) -> tuple[list[Dataset], Dataset]:
 	""" """
-	train = load_dataset(
-		'nyu-mll/glue', config.task, split=config.train_split
-	)
-	eval = load_dataset(
-		'nyu-mll/glue', config.task, split=config.eval_split
-	)
+	train = load_dataset('nyu-mll/glue', config.task, split=config.train_split)
+	eval = load_dataset('nyu-mll/glue', config.task, split=config.eval_split)
 
 	rng = np.random.default_rng(config.seed)
 
