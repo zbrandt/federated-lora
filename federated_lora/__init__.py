@@ -6,12 +6,9 @@ from pathlib import Path
 
 import torch
 from opacus.accountants.utils import get_noise_multiplier
-from torch.optim import AdamW
+from torch.optim import SGD
 from torch.utils.data import DataLoader
-from transformers import (
-	AutoTokenizer,
-	DataCollatorWithPadding,
-)
+from transformers import AutoImageProcessor
 
 from federated_lora.config import Config
 from federated_lora.core.client import Client
@@ -24,17 +21,17 @@ from federated_lora.registry import get_method
 
 def build(config: Config) -> Server:
 	"""
-	Build the federated LoRA project server and clients.
+	Build the federated LoRA server and clients for image classification.
 
 	Parameters
 	----------
 	config : Config
-		TODO
+		Run configuration.
 
 	Returns
 	-------
 	Server
-		TODO
+		The configured federated server.
 	"""
 	# set the device type
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -42,29 +39,44 @@ def build(config: Config) -> Server:
 	# set the seed for generating random numbers on all devices
 	generator = torch.manual_seed(config.seed)
 
-	# TODO
-	tokenizer = AutoTokenizer.from_pretrained('FacebookAI/roberta-base')
+	image_processor = AutoImageProcessor.from_pretrained(config.model)
 
-	# TODO
-	train_shards, test_dataset = load_datasets(config, tokenizer)
+	train_shards, test_dataset = load_datasets(config, image_processor)
 
-	shard_size = sum(len(s) for s in train_shards) / len(train_shards)
-	sample_rate = config.batch_size / shard_size
-	# steps is the number of noised gradient releases that touch data — one per
-	# local step, i.e. ``rounds * local_steps`` (both A- and B-steps consume a
-	# batch, so both count)
+	shard_sizes = [len(s) for s in train_shards]
+	mean_shard = sum(shard_sizes) / len(shard_sizes)
+	sample_rate = config.batch_size / mean_shard
+	if min(shard_sizes) < config.batch_size:
+		raise ValueError(
+			f'smallest shard ({min(shard_sizes)}) < batch_size '
+			f'({config.batch_size}): per-example sampling rate would exceed 1. '
+			'Lower batch_size, or reduce client count / skew.'
+		)
 	steps = config.global_rounds * config.local_steps
-	config.privacy.noise_multiplier = get_noise_multiplier(
-		target_epsilon=config.privacy.target_epsilon,
-		target_delta=config.privacy.target_delta,
-		sample_rate=sample_rate,
-		epochs=steps,
-	)
+	if config.privacy.target_epsilon is None:
+		config.privacy.noise_multiplier = 0.0
+	else:
+		config.privacy.noise_multiplier = get_noise_multiplier(
+			target_epsilon=config.privacy.target_epsilon,
+			target_delta=config.privacy.target_delta,
+			sample_rate=sample_rate,
+			steps=steps,
+		)
+		# Round-trip check: the sigma we just picked must account back to
+		# (approximately) the target epsilon at this rate and step count.
+		spent = achieved_epsilon(
+			config.privacy.noise_multiplier,
+			sample_rate,
+			steps,
+			config.privacy.target_delta,
+		)
+		assert spent <= config.privacy.target_epsilon + 0.1, (
+			f'calibration mismatch: target {config.privacy.target_epsilon}, '
+			f'accounted {spent}'
+		)
 
-	# TODO
 	method = get_method(config.method)
 
-	# TODO
 	model = create_peft_model(config, device)
 
 	params_A, params_B, params_head = [], [], []
@@ -76,19 +88,13 @@ def build(config: Config) -> Server:
 		elif 'lora_B' in name:
 			params_B.append(param)
 		else:
-			# the sequence-classification head is added to ``modules_to_save`` 
-			# by PEFT for TaskType.SEQ_CLS)
 			params_head.append(param)
 
-	# TODO
-	collator = DataCollatorWithPadding(tokenizer=tokenizer)
-
-	# TODO
 	clients = []
 	for i, shard in enumerate(train_shards):
 		generator = torch.Generator().manual_seed(config.seed + i)
 
-		optimizer = AdamW(
+		optimizer = SGD(
 			[
 				{'params': params_A, 'lr': config.lr_a},
 				{'params': params_B, 'lr': config.lr_b},
@@ -100,7 +106,7 @@ def build(config: Config) -> Server:
 			shard,
 			batch_size=config.batch_size,
 			shuffle=True,
-			collate_fn=collator,
+			# collate_fn=,
 			generator=generator,
 		)
 
@@ -114,12 +120,11 @@ def build(config: Config) -> Server:
 			)
 		)
 
-	# TODO
 	test_dataloader = DataLoader(
 		test_dataset,
 		batch_size=config.batch_size,
 		shuffle=False,
-		collate_fn=collator,
+		# collate_fn=,
 	)
 
 	return Server(
@@ -129,10 +134,11 @@ def build(config: Config) -> Server:
 		sample_rate=config.client_sample_rate,
 		clients=clients,
 		generator=generator,
-		noise_multiplier=config.privacy.noise_multiplier,  # TODO
-		max_grad_norm=config.privacy.clip_norm,  # TODO
+		noise_multiplier=config.privacy.noise_multiplier,
+		max_grad_norm=config.privacy.clip_norm,
 		test_dataloader=test_dataloader,
 		device=device,
+		lr_decay=config.lr_decay,
 	)
 
 
@@ -143,7 +149,7 @@ def run(argv: list[str] | None = None) -> dict:
 	Get the configuration of the hyperparameters from argument parsers,
 	instantiate and run the server from the configuration. Saves results to
 	specified or default result directory indexed by method name (label only),
-	GLUE benchmark task, and seed.
+	task, and seed.
 
 	Parameters
 	----------
@@ -161,19 +167,27 @@ def run(argv: list[str] | None = None) -> dict:
 	history = server.run()
 	result = {'config': asdict(config), 'history': history}
 
-	# Record the epsilon actually spent so accuracy can be plotted against the
-	# privacy budget (matches the calibration q and step count from build()).
-	client_dataset_size = sum(
-		len(client.shard) for client in server.clients
-	) / len(server.clients)
-	sample_rate = config.batch_size / client_dataset_size
-	steps = config.global_rounds * config.local_steps
-	result['achieved_epsilon'] = achieved_epsilon(
-		config.privacy.noise_multiplier,
-		sample_rate,
-		steps,
-		config.privacy.target_delta,
-	)
+	if config.privacy.noise_multiplier == 0.0:
+		result['achieved_epsilon'] = None
+		result['epsilon_breakdown'] = None
+	else:
+		steps = config.global_rounds * config.local_steps
+		per_client = [
+			achieved_epsilon(
+				config.privacy.noise_multiplier,
+				config.batch_size / len(client.shard),
+				steps,
+				config.privacy.target_delta,
+			)
+			for client in server.clients
+		]
+		result['achieved_epsilon'] = max(per_client)  # worst-case client
+		result['epsilon_breakdown'] = {
+			'min': min(per_client),
+			'mean': sum(per_client) / len(per_client),
+			'max': max(per_client),
+			'per_client': per_client,
+		}
 
 	if config.output:
 		path = Path(config.output)

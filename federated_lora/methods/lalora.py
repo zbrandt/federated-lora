@@ -6,7 +6,7 @@ import torch
 from opacus import PrivacyEngine
 from torch.nn import Module
 from torch.nn import functional as F
-from torch.optim import AdamW
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 
@@ -51,7 +51,7 @@ class LaLoRA:
 	def local_update(
 		self,
 		model: Module,
-		optimizer: AdamW,
+		optimizer: Optimizer,
 		train_dataloader: DataLoader,
 		noise_multiplier: float,
 		max_grad_norm: float,
@@ -78,7 +78,7 @@ class LaLoRA:
 			data_loader=train_dataloader,
 			noise_multiplier=noise_multiplier,
 			max_grad_norm=max_grad_norm,
-			poisson_sampling=False,  # TODO
+			poisson_sampling=False, # TODO
 		)
 
 		batches = cycle(train_dataloader)
@@ -92,8 +92,23 @@ class LaLoRA:
 			loss = model(**batch).loss
 			loss.backward()
 
+			# TODO: zero inactive factor's per-sample gradient before clipping so the 
+			# DP clip norm and injected noise bound only the matrix actually 
+			# released this step, not the joint norm over both factors. 
+			# The classification head keeps its per-sample gradient and is 
+			# trained (and privatized) every step.
+			is_odd = k % 2 != 0
+			for name, parameter in model.named_parameters():
+				grad_sample = getattr(parameter, 'grad_sample', None)
+				if grad_sample is None:
+					continue
+				inactive = ('lora_A' in name and is_odd) or (
+					'lora_B' in name and not is_odd
+				)
+				if inactive:
+					parameter.grad_sample = torch.zeros_like(grad_sample)
+
 			if optimizer.pre_step():
-				is_odd = k % 2 != 0
 				for name, parameter in model.named_parameters():
 					if parameter.grad is None:
 						continue

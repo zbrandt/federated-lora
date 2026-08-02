@@ -22,6 +22,7 @@ class Server:
 		max_grad_norm: float,
 		test_dataloader: DataLoader,
 		device: str,
+		lr_decay: float = 1.0,
 	) -> None:
 		self.model = model
 		self.method = method
@@ -33,10 +34,10 @@ class Server:
 		self.max_grad_norm = max_grad_norm
 		self.test_dataloader = test_dataloader
 		self.device = device
+		self.lr_decay = lr_decay
 
-		# trainable parameters are the LoRA A and B matrix parameters and the 
-		# sequence-classification head which PEFT keeps in ``modules_to_save`` 
-		# for TaskType.SEQ_CLS. 
+		# trainable parameters are the LoRA A and B matrix parameters and the
+		# classification head which PEFT keeps in ``modules_to_save``.
 		self.trainable_parameters = {
 			name
 			for name, param in model.named_parameters()
@@ -115,5 +116,11 @@ class Server:
 				f'acc={metrics["accuracy"]:.4f}',
 				flush=True,
 			)
+
+			# decay learning rate for all clients
+			if self.lr_decay != 1.0:
+				for client in self.clients:
+					for group in client.optimizer.param_groups:
+						group['lr'] *= self.lr_decay
 
 		return history
