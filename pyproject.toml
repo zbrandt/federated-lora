@@ -10,6 +10,7 @@ dependencies = [
     "matplotlib>=3.10.0",
     "opacus>=1.6.0",
     "peft>=0.19.1",
+    "torchvision>=0.28.0",
     "transformers>=5.13.1",
 ]
 
