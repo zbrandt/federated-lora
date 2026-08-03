@@ -1,0 +1,14 @@
+nohup: ignoring input
+[sweep] rank_sweep_r2_epsnone_seed42: cached at results/sweep/rank_sweep_r2_epsnone_seed42.json
+[sweep] rank_sweep_r2_epsnone_seed43: cached at results/sweep/rank_sweep_r2_epsnone_seed43.json
+[sweep] rank_sweep_r2_epsnone_seed44: cached at results/sweep/rank_sweep_r2_epsnone_seed44.json
+[sweep] rank_sweep_r4_epsnone_seed42: cached at results/sweep/rank_sweep_r4_epsnone_seed42.json
+[sweep] rank_sweep_r4_epsnone_seed43: cached at results/sweep/rank_sweep_r4_epsnone_seed43.json
+[sweep] rank_sweep_r4_epsnone_seed44: cached at results/sweep/rank_sweep_r4_epsnone_seed44.json
+[sweep] rank_sweep_r6_epsnone_seed42: cached at results/sweep/rank_sweep_r6_epsnone_seed42.json
+[sweep] rank_sweep_r6_epsnone_seed43: cached at results/sweep/rank_sweep_r6_epsnone_seed43.json
+[sweep] rank_sweep_r6_epsnone_seed44: cached at results/sweep/rank_sweep_r6_epsnone_seed44.json
+[sweep] rank_sweep_r8_epsnone_seed42: cached at results/sweep/rank_sweep_r8_epsnone_seed42.json
+[sweep] rank_sweep_r8_epsnone_seed43: cached at results/sweep/rank_sweep_r8_epsnone_seed43.json
+[sweep] rank_sweep_r8_epsnone_seed44: cached at results/sweep/rank_sweep_r8_epsnone_seed44.json
+[sweep] wrote figures/sweep/rank_trend.png
