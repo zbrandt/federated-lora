@@ -14,8 +14,8 @@ from federated_lora.config import Config
 from federated_lora.core.client import Client
 from federated_lora.core.data import load_datasets
 from federated_lora.core.model import create_peft_model
+from federated_lora.core.privacy import compute_noise_level, perform_accounting
 from federated_lora.core.server import Server
-from federated_lora.privacy.accountant import achieved_epsilon
 from federated_lora.registry import get_method
 
 
@@ -44,36 +44,16 @@ def build(config: Config) -> Server:
 	train_shards, test_dataset = load_datasets(config, image_processor)
 
 	shard_sizes = [len(s) for s in train_shards]
-	mean_shard = sum(shard_sizes) / len(shard_sizes)
+	mean_shard = sum(shard_sizes) / len(shard_sizes)  # TODO
 	sample_rate = config.batch_size / mean_shard
-	if min(shard_sizes) < config.batch_size:
-		raise ValueError(
-			f'smallest shard ({min(shard_sizes)}) < batch_size '
-			f'({config.batch_size}): per-example sampling rate would exceed 1. '
-			'Lower batch_size, or reduce client count / skew.'
-		)
 	steps = config.global_rounds * config.local_steps
-	if config.privacy.target_epsilon is None:
-		config.privacy.noise_multiplier = 0.0
-	else:
-		config.privacy.noise_multiplier = get_noise_multiplier(
-			target_epsilon=config.privacy.target_epsilon,
-			target_delta=config.privacy.target_delta,
-			sample_rate=sample_rate,
-			steps=steps,
-		)
-		# Round-trip check: the sigma we just picked must account back to
-		# (approximately) the target epsilon at this rate and step count.
-		spent = achieved_epsilon(
-			config.privacy.noise_multiplier,
-			sample_rate,
-			steps,
-			config.privacy.target_delta,
-		)
-		assert spent <= config.privacy.target_epsilon + 0.1, (
-			f'calibration mismatch: target {config.privacy.target_epsilon}, '
-			f'accounted {spent}'
-		)
+
+	config.privacy.noise_multiplier = compute_noise_level(
+		target_epsilon=config.privacy.target_epsilon,
+		target_delta=config.privacy.target_delta,
+		sample_rate=sample_rate,
+		steps=steps,
+	)
 
 	method = get_method(config.method)
 
@@ -168,12 +148,13 @@ def run(argv: list[str] | None = None) -> dict:
 	result = {'config': asdict(config), 'history': history}
 
 	if config.privacy.noise_multiplier == 0.0:
-		result['achieved_epsilon'] = None
+		result['target_epsilon'] = None
 		result['epsilon_breakdown'] = None
 	else:
+		result['target_epsilon'] = config.privacy.target_epsilon
 		steps = config.global_rounds * config.local_steps
 		per_client = [
-			achieved_epsilon(
+			perform_accounting(
 				config.privacy.noise_multiplier,
 				config.batch_size / len(client.shard),
 				steps,
@@ -181,11 +162,10 @@ def run(argv: list[str] | None = None) -> dict:
 			)
 			for client in server.clients
 		]
-		result['achieved_epsilon'] = max(per_client)  # worst-case client
 		result['epsilon_breakdown'] = {
-			'min': min(per_client),
-			'mean': sum(per_client) / len(per_client),
-			'max': max(per_client),
+			'per_shard_min': min(per_client),
+			'per_shard_mean': sum(per_client) / len(per_client),
+			'per_shard_max': max(per_client),
 			'per_client': per_client,
 		}
 

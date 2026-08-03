@@ -3,36 +3,39 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 
-
 # task -> (hf_dataset_id, image_field, label_field, num_labels, eval_split)
 IMAGE_TASKS = {
 	'cifar100': ('uoft-cs/cifar100', 'img', 'fine_label', 100, 'test'),
 }
 
-# TODO: consider separate configuration
+
 @dataclass
 class PrivacyConfig:
-	clip_norm: float = 1.0  # per-example L2 clipping threshold C
-	target_epsilon: float | None = 3.0  # set to None for a non-private run
-	target_delta: float = 1e-5
-	noise_multiplier: float | None = None  # filled in by build()
-	smoothing: bool = True  # apply the low-pass Gaussian filter to LoRA grads
+	clip_norm: float = 1.0  # per-sample L2 clipping norm
+	target_epsilon: float = 3.0  # the target privacy loss budget
+	target_delta: float = 1e-5  # TODO
+	noise_multiplier: float = (
+		0.0  # the Gaussian noise multiplier for differential privacy
+	)
+	smoothing: bool = True
 
 
 @dataclass(slots=True)
 class Config:
 	method: str = 'lalora'
-	model: str = 'google/vit-base-patch16-224' # use ViT instead of the paper's Swin
+	model: str = (
+		'google/vit-base-patch16-224'  # use ViT instead of the paper's Swin
+	)
 	task: str = 'cifar100'
 	train_split: str = 'train'
 
-	# set up hyperparameters for image classification 
+	# set up hyperparameters for image classification
 	num_clients: int = 8
 	client_sample_rate: float = 0.5
 	partition_strategy: str = 'noniid'
 	dirichlet_alpha: float = 0.1
-	global_rounds: int = 25  # TODO: paper uses 100
-	local_steps: int = 20
+	global_rounds: int = 25  # the number of communication rounds
+	local_steps: int = 20  # the number of local update steps per round
 	batch_size: int = 16
 	seed: int = 42
 
@@ -77,19 +80,12 @@ class Config:
 	def from_argv(cls, argv: list[str] | None = None) -> Config:
 		defaults = cls()
 		parser = argparse.ArgumentParser(prog='la_lora')
-		parser.add_argument(
-			'--method', default=defaults.method
-		)
+		parser.add_argument('--method', default=defaults.method)
 		parser.add_argument(
 			'--task', choices=list(IMAGE_TASKS), default=defaults.task
 		)
-		parser.add_argument(
-			'--seed',
-			type=int, default=defaults.seed
-		)
-		parser.add_argument(
-			'--results-dir', default=defaults.results_dir
-		)
+		parser.add_argument('--seed', type=int, default=defaults.seed)
+		parser.add_argument('--results-dir', default=defaults.results_dir)
 		args = parser.parse_args(argv)
 		return cls(
 			method=args.method,
