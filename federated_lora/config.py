@@ -23,9 +23,7 @@ class PrivacyConfig:
 @dataclass(slots=True)
 class Config:
 	method: str = 'lalora'
-	model: str = (
-		'google/vit-base-patch16-224'  # use ViT instead of the paper's Swin
-	)
+	model: str = 'google/vit-base-patch16-224-in21k'
 	task: str = 'cifar100'
 	train_split: str = 'train'
 
@@ -34,7 +32,7 @@ class Config:
 	client_sample_rate: float = 0.5
 	partition_strategy: str = 'noniid'
 	dirichlet_alpha: float = 0.1
-	global_rounds: int = 25  # the number of communication rounds
+	global_rounds: int = 100  # the number of communication rounds
 	local_steps: int = 20  # the number of local update steps per round
 	batch_size: int = 16
 	seed: int = 42
@@ -42,7 +40,7 @@ class Config:
 	# setup hyperparameters for LoRA fine-tuning
 	lora_rank: int = 16
 	lora_alpha: int = 16
-	target_modules: tuple[str, ...] = ('query', 'value')
+	target_modules: tuple[str, ...] = ('q_proj', 'v_proj')
 	lora_dropout: float = 0.0
 
 	# set up hyperparameters for optimization

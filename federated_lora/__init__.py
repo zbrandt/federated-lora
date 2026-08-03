@@ -57,7 +57,15 @@ def build(config: Config) -> Server:
 
 	method = get_method(config.method)
 
-	model = create_peft_model(config, device)
+	model = create_peft_model(
+		model=config.model,
+		num_labels=config.num_labels,
+		lora_rank=config.lora_rank,
+		target_modules=config.target_modules,
+		lora_alpha=config.lora_alpha,
+		lora_dropout=config.lora_dropout,
+		device=device,
+	)
 
 	params_A, params_B, params_head = [], [], []
 	for name, param in model.named_parameters():
