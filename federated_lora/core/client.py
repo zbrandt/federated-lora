@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import torch
 from datasets import Dataset
-from torch.optim import AdamW
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 
@@ -22,10 +22,12 @@ class Client:
 		shard: Dataset,
 		steps: int,
 		dataloader: DataLoader,
-		optimizer: AdamW,
+		optimizer: Optimizer,
+		noise_multiplier: float,
 	) -> None:
 		self.id = id
 		self.shard = shard
 		self.steps = steps
 		self.dataloader = dataloader
 		self.optimizer = optimizer
+		self.noise_multiplier = noise_multiplier

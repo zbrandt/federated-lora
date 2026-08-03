@@ -18,7 +18,6 @@ class Server:
 		sample_rate: float,
 		clients: list[Client],
 		generator: Generator,
-		noise_multiplier: float,
 		max_grad_norm: float,
 		test_dataloader: DataLoader,
 		device: str,
@@ -30,7 +29,6 @@ class Server:
 		self.sample_rate = sample_rate
 		self.clients = clients
 		self.generator = generator
-		self.noise_multiplier = noise_multiplier
 		self.max_grad_norm = max_grad_norm
 		self.test_dataloader = test_dataloader
 		self.device = device
@@ -63,7 +61,6 @@ class Server:
 
 			client_uploads, losses = [], []
 			for client in selected_clients:
-
 				# broadcast global model to client
 				self.model.load_state_dict(self.global_state, strict=False)
 
@@ -72,13 +69,13 @@ class Server:
 					model=self.model,
 					optimizer=client.optimizer,
 					train_dataloader=client.dataloader,
-					noise_multiplier=self.noise_multiplier,
+					noise_multiplier=client.noise_multiplier,
 					max_grad_norm=self.max_grad_norm,
 					local_steps=client.steps,
 					device=self.device,
 				)
 
-				# snapshot this client's trained parameters before next client 
+				# snapshot this client's trained parameters before next client
 				# overwrites the shared model in place
 				upload = {
 					key: value.detach().cpu().clone()

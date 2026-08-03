@@ -13,18 +13,9 @@ from torch.utils.data import DataLoader
 class LaLoRA:
 	name = 'lalora'
 
+	# TODO
 	def smooth(self, grad: torch.Tensor, mode: str) -> torch.Tensor:
-		"""
-		TODO
-
-		Parameters
-		----------
-		TODO
-
-		Returns
-		-------
-		TODO
-		"""
+		""" """
 		if grad is None:
 			return None
 
@@ -48,6 +39,7 @@ class LaLoRA:
 			filtered = F.conv1d(x_padded, kernel).squeeze(1).T
 			return filtered
 
+	# TODO
 	def local_update(
 		self,
 		model: Module,
@@ -58,17 +50,7 @@ class LaLoRA:
 		local_steps: int,
 		device: str,
 	):
-		"""
-		TODO
-
-		Parameters
-		----------
-		TODO
-
-		Returns
-		-------
-		TODO
-		"""
+		""" """
 		model.train()
 
 		privacy_engine = PrivacyEngine()
@@ -78,7 +60,6 @@ class LaLoRA:
 			data_loader=train_dataloader,
 			noise_multiplier=noise_multiplier,
 			max_grad_norm=max_grad_norm,
-			poisson_sampling=False, # TODO
 		)
 
 		batches = cycle(train_dataloader)
@@ -92,11 +73,6 @@ class LaLoRA:
 			loss = model(**batch).loss
 			loss.backward()
 
-			# TODO: zero inactive factor's per-sample gradient before clipping so the 
-			# DP clip norm and injected noise bound only the matrix actually 
-			# released this step, not the joint norm over both factors. 
-			# The classification head keeps its per-sample gradient and is 
-			# trained (and privatized) every step.
 			is_odd = k % 2 != 0
 			for name, parameter in model.named_parameters():
 				grad_sample = getattr(parameter, 'grad_sample', None)
@@ -130,9 +106,6 @@ class LaLoRA:
 
 			total_loss += float(loss.item())
 
-		# Unwrap the Opacus GradSampleModule so the server sees a plain module
-		# whose parameters were updated in place; the server snapshots the
-		# trainable tensors it needs from it.
 		return model.to_standard_module(), total_loss / max(1, local_steps)
 
 	def aggregate(

@@ -43,18 +43,6 @@ def build(config: Config) -> Server:
 
 	train_shards, test_dataset = load_datasets(config, image_processor)
 
-	shard_sizes = [len(s) for s in train_shards]
-	mean_shard = sum(shard_sizes) / len(shard_sizes)  # TODO
-	sample_rate = config.batch_size / mean_shard
-	steps = config.global_rounds * config.local_steps
-
-	config.privacy.noise_multiplier = compute_noise_level(
-		target_epsilon=config.privacy.target_epsilon,
-		target_delta=config.privacy.target_delta,
-		sample_rate=sample_rate,
-		steps=steps,
-	)
-
 	method = get_method(config.method)
 
 	model = create_peft_model(
@@ -79,8 +67,17 @@ def build(config: Config) -> Server:
 			params_head.append(param)
 
 	clients = []
+	steps = config.global_rounds * config.local_steps
 	for i, shard in enumerate(train_shards):
 		generator = torch.Generator().manual_seed(config.seed + i)
+
+		sample_rate = config.batch_size / len(shard)
+		noise_multiplier = compute_noise_level(
+			target_epsilon=config.privacy.target_epsilon,
+			target_delta=config.privacy.target_delta,
+			sample_rate=sample_rate,
+			steps=steps,
+		)
 
 		optimizer = SGD(
 			[
@@ -105,6 +102,7 @@ def build(config: Config) -> Server:
 				steps=config.local_steps,
 				dataloader=train_dataloader,
 				optimizer=optimizer,
+				noise_multiplier=noise_multiplier,
 			)
 		)
 
@@ -122,7 +120,6 @@ def build(config: Config) -> Server:
 		sample_rate=config.client_sample_rate,
 		clients=clients,
 		generator=generator,
-		noise_multiplier=config.privacy.noise_multiplier,
 		max_grad_norm=config.privacy.clip_norm,
 		test_dataloader=test_dataloader,
 		device=device,
@@ -163,7 +160,7 @@ def run(argv: list[str] | None = None) -> dict:
 		steps = config.global_rounds * config.local_steps
 		per_client = [
 			perform_accounting(
-				config.privacy.noise_multiplier,
+				client.noise_multiplier,
 				config.batch_size / len(client.shard),
 				steps,
 				config.privacy.target_delta,
