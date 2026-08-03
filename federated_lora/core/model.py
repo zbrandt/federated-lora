@@ -41,7 +41,7 @@ def create_peft_model(config: Config, device: torch.device) -> PeftModel:
 
 	peft_config = LoraConfig(
 		r=config.lora_rank,
-		target_modules=['query','value'],
+		target_modules=['q_proj','v_proj'],
 		lora_alpha=config.lora_alpha,
 		lora_dropout=config.lora_dropout,
 		modules_to_save=['classifier'],
