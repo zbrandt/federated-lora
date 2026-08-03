@@ -5,41 +5,13 @@ from itertools import cycle
 import torch
 from opacus import PrivacyEngine
 from torch.nn import Module
-from torch.nn import functional as F
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 
-class LaLoRA:
-	name = 'lalora' # TODO: rename to la_lora
+class FFALoRA:
+	name = 'ffa_lora'
 
-	# TODO
-	def smooth(self, grad: torch.Tensor, mode: str) -> torch.Tensor:
-		""" """
-		if grad is None:
-			return None
-
-		# Fixed 1D Gaussian kernel G_s
-		kernel = (
-			torch.tensor([1.0, 4.0, 6.0, 4.0, 1.0], device=grad.device) / 16.0
-		)
-		kernel = kernel.view(1, 1, 5)
-
-		if mode == 'row':  # Matrix A: shape (r, n)
-			r, _n = grad.shape
-			x = grad.unsqueeze(1)  # Shape: (r, 1, n)
-			x_padded = F.pad(x, (2, 2), mode='reflect')
-			filtered = F.conv1d(x_padded, kernel).squeeze(1)
-			return filtered
-
-		else:  # Matrix B: shape (m, r)
-			_m, _r = grad.shape
-			x = grad.T.unsqueeze(1)  # Transpose to (r, 1, m)
-			x_padded = F.pad(x, (2, 2), mode='reflect')
-			filtered = F.conv1d(x_padded, kernel).squeeze(1).T
-			return filtered
-
-	# TODO
 	def local_update(
 		self,
 		model: Module,
@@ -51,7 +23,6 @@ class LaLoRA:
 		device: str,
 		round_index: int = 0,
 	):
-		""" """
 		model.train()
 
 		privacy_engine = PrivacyEngine()
@@ -61,12 +32,13 @@ class LaLoRA:
 			data_loader=train_dataloader,
 			noise_multiplier=noise_multiplier,
 			max_grad_norm=max_grad_norm,
+			poisson_sampling=True,
 		)
 
 		batches = cycle(train_dataloader)
 
 		total_loss = 0.0
-		for k in range(1, local_steps + 1):
+		for _ in range(local_steps):
 			batch = next(batches)
 			batch = {key: value.to(device) for key, value in batch.items()}
 
@@ -74,15 +46,14 @@ class LaLoRA:
 			loss = model(**batch).loss
 			loss.backward()
 
-			is_odd = k % 2 != 0
+			# Freeze A at its (shared) init: zero its per-sample gradient
+			# before clipping so the DP clip norm and injected noise bound
+			# only B, avoiding the joint-norm amplification of A/B updates.
 			for name, parameter in model.named_parameters():
 				grad_sample = getattr(parameter, 'grad_sample', None)
 				if grad_sample is None:
 					continue
-				inactive = ('lora_A' in name and is_odd) or (
-					'lora_B' in name and not is_odd
-				)
-				if inactive:
+				if 'lora_A' in name:
 					parameter.grad_sample = torch.zeros_like(grad_sample)
 
 			if optimizer.pre_step():
@@ -90,18 +61,7 @@ class LaLoRA:
 					if parameter.grad is None:
 						continue
 					if 'lora_A' in name:
-						parameter.grad = (
-							self.smooth(parameter.grad, mode='row')
-							if not is_odd
-							else None
-						)
-					elif 'lora_B' in name:
-						parameter.grad = (
-							self.smooth(parameter.grad, mode='col')
-							if is_odd
-							else None
-						)
-
+						parameter.grad = None
 				optimizer.original_optimizer.step()
 				optimizer.zero_grad()
 
@@ -112,21 +72,6 @@ class LaLoRA:
 	def aggregate(
 		self, client_uploads: list[dict[str, torch.Tensor]]
 	) -> dict[str, torch.Tensor]:
-		"""
-		Average each trainable tensor across the client uploads (FedAvg).
-
-		Parameters
-		----------
-		client_uploads : list[dict[str, torch.Tensor]]
-			One state-dict snapshot per client, each restricted to the
-			federated (trainable) keys: the LoRA A/B factors and the
-			classification head.
-
-		Returns
-		-------
-		dict[str, torch.Tensor]
-			The new global state, i.e. the per-key mean over clients.
-		"""
 		return {
 			key: torch.stack(
 				[upload[key].float() for upload in client_uploads], dim=0

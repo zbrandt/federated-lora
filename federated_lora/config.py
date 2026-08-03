@@ -32,7 +32,7 @@ class Config:
 	client_sample_rate: float = 0.5
 	partition_strategy: str = 'noniid'
 	dirichlet_alpha: float = 0.1
-	global_rounds: int = 100  # the number of communication rounds
+	global_rounds: int = 20  # the number of communication rounds
 	local_steps: int = 20  # the number of local update steps per round
 	batch_size: int = 16
 	seed: int = 42

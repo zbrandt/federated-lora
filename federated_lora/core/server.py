@@ -8,7 +8,7 @@ from transformers import PreTrainedModel
 from federated_lora.core.client import Client
 from federated_lora.core.eval import evaluate
 
-
+# TODO
 class Server:
 	def __init__(
 		self,
@@ -73,6 +73,7 @@ class Server:
 					max_grad_norm=self.max_grad_norm,
 					local_steps=client.steps,
 					device=self.device,
+					round_index=round_index
 				)
 
 				# snapshot this client's trained parameters before next client

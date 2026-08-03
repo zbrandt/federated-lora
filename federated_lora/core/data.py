@@ -8,13 +8,7 @@ from federated_lora.config import Config
 
 # TODO
 def _make_transform(config: Config, processor):
-	"""
-	Build an on-the-fly transform that turns raw PIL images into pixel tensors
-	using the model's own image processor (exact resize/crop/normalization).
-
-	Applied lazily per batch (via ``with_transform``) so the full image set is
-	never materialized in memory.
-	"""
+	""" """
 	image_field = config.image_field
 	label_field = config.label_field
 
@@ -25,12 +19,12 @@ def _make_transform(config: Config, processor):
 
 	return transform
 
+
 # TODO
 def _partition_dirichlet(
 	labels: list[int], num_clients: int, alpha: float, rng: np.random.Generator
 ) -> list[list[int]]:
-	"""
-	"""
+	""" """
 	labels = np.asarray(labels)
 	client_indices: list[list[int]] = [[] for _ in range(num_clients)]
 	for cls in np.unique(labels):
@@ -44,10 +38,10 @@ def _partition_dirichlet(
 		rng.shuffle(shard)
 	return client_indices
 
+
 # TODO
 def load_datasets(config: Config, processor) -> tuple[list[Dataset], Dataset]:
-	""" 
-	"""
+	""" """
 	train = load_dataset(config.dataset_id, split=config.train_split)
 	eval = load_dataset(config.dataset_id, split=config.eval_split)
 

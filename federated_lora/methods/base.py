@@ -20,6 +20,7 @@ class Method(Protocol):
 		max_grad_norm: float,
 		local_steps: int,
 		device: str,
+		round_index: int = 0,
 	) -> tuple[Module, float]: ...
 
 	def aggregate(
