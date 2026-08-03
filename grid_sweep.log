@@ -731,3 +731,4 @@ classifier.dense.bias      | MISSING    |
 Notes:
 - UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
 - MISSING:	those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+[round 1/100] train_loss=0.5921 eval_loss=0.7750 acc=0.5092 eps=0.3641
