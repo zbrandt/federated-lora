@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 
-# task -> (hf_dataset_id, image_field, label_field, num_labels, eval_split)
+# TODO
 IMAGE_TASKS = {
 	'cifar100': ('uoft-cs/cifar100', 'img', 'fine_label', 100, 'test'),
 }
@@ -25,22 +25,23 @@ class Config:
 	method: str = 'lalora'
 	model: str = 'google/vit-base-patch16-224-in21k'
 	task: str = 'cifar100'
-	train_split: str = 'train'
 
 	# set up hyperparameters for image classification
 	num_clients: int = 8
 	client_sample_rate: float = 0.5
-	partition_strategy: str = 'noniid'
-	dirichlet_alpha: float = 0.1
+	dirichlet_alpha: float = (
+		0.1  # the parameter of the Dirichlet distribution.
+	)
 	global_rounds: int = 20  # the number of communication rounds
 	local_steps: int = 20  # the number of local update steps per round
 	batch_size: int = 16
+	num_workers: int = 8
 	seed: int = 42
 
 	# setup hyperparameters for LoRA fine-tuning
 	lora_rank: int = 16
 	lora_alpha: int = 16
-	target_modules: tuple[str, ...] = ('q_proj', 'v_proj')
+	target_modules: tuple[str, ...] = ('query', 'value')
 	lora_dropout: float = 0.0
 
 	# set up hyperparameters for optimization
@@ -55,7 +56,7 @@ class Config:
 	output: str | None = None
 
 	@property
-	def dataset_id(self) -> str:
+	def dataset(self) -> str:
 		return IMAGE_TASKS[self.task][0]
 
 	@property

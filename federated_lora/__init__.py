@@ -5,6 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import torch
+from datasets import load_dataset
 from opacus.accountants.utils import get_noise_multiplier
 from torch.optim import SGD
 from torch.utils.data import DataLoader
@@ -12,13 +13,14 @@ from transformers import AutoImageProcessor
 
 from federated_lora.config import Config
 from federated_lora.core.client import Client
-from federated_lora.core.data import load_datasets
+from federated_lora.core.data import partition_dirichlet
 from federated_lora.core.model import create_peft_model
 from federated_lora.core.privacy import compute_noise_level, perform_accounting
 from federated_lora.core.server import Server
 from federated_lora.registry import get_method
 
 
+# TODO
 def build(config: Config) -> Server:
 	"""
 	Build the federated LoRA server and clients for image classification.
@@ -33,15 +35,7 @@ def build(config: Config) -> Server:
 	Server
 		The configured federated server.
 	"""
-	# set the device type
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-	# set the seed for generating random numbers on all devices
-	generator = torch.manual_seed(config.seed)
-
-	image_processor = AutoImageProcessor.from_pretrained(config.model)
-
-	train_shards, test_dataset = load_datasets(config, image_processor)
 
 	method = get_method(config.method)
 
@@ -66,20 +60,66 @@ def build(config: Config) -> Server:
 		else:
 			params_head.append(param)
 
+	dataset = load_dataset(path=config.dataset)
+	processor = AutoImageProcessor.from_pretrained(pretrained_model_name_or_path=config.model)
+
+	def collate_fn(batch):
+		images = [sample['img'].convert('RGB') for sample in batch]
+		labels = torch.tensor(
+			[sample['fine_label'] for sample in batch], dtype=torch.long
+		)
+
+		# resize, normalize, and convert to PyTorch tensors
+		inputs = processor(images, return_tensors='pt')
+		inputs['labels'] = labels
+		return inputs
+
+	train_shards = partition_dirichlet(
+		dataset['train']['fine_label'],
+		config.num_clients,
+		config.dirichlet_alpha,
+		config.seed,
+	)
+
+	test_dataloader = DataLoader(
+		dataset['test'],
+		batch_size=128,
+		shuffle=False,
+		collate_fn=collate_fn,
+		num_workers=8,
+		pin_memory=(device.type == 'cuda'),
+	)
+
 	clients = []
 	steps = config.global_rounds * config.local_steps
-	for i, shard in enumerate(train_shards):
-		generator = torch.Generator().manual_seed(config.seed + i)
+	for client_id, indices in enumerate(train_shards):
+		client_dataset = dataset["train"].select(indices)
 
-		sample_rate = config.batch_size / len(shard)
-		noise_multiplier = compute_noise_level(
+		client_seed = config.seed + client_id
+
+		client_generator = torch.Generator()
+		client_generator.manual_seed(client_seed)
+
+		client_dataloader = DataLoader(
+			client_dataset,
+			batch_size=config.batch_size,
+			shuffle=True,
+			collate_fn=collate_fn,
+			generator=client_generator,
+			# worker_init_fn=
+			num_workers=config.num_workers,
+			pin_memory=(device.type == 'cuda'),
+		)
+
+		sample_rate = config.batch_size / len(client_dataset)
+		client_noise_multiplier = compute_noise_level(
 			target_epsilon=config.privacy.target_epsilon,
 			target_delta=config.privacy.target_delta,
 			sample_rate=sample_rate,
 			steps=steps,
 		)
 
-		optimizer = SGD(
+		client_optimizer = SGD(
 			[
 				{'params': params_A, 'lr': config.lr_a},
 				{'params': params_B, 'lr': config.lr_b},
@@ -87,31 +127,16 @@ def build(config: Config) -> Server:
 			]
 		)
 
-		train_dataloader = DataLoader(
-			shard,
-			batch_size=config.batch_size,
-			shuffle=True,
-			# collate_fn=,
-			generator=generator,
-		)
-
 		clients.append(
 			Client(
-				id=i,
-				shard=shard,
+				id=client_id,
+				dataset=client_dataset,
 				steps=config.local_steps,
-				dataloader=train_dataloader,
-				optimizer=optimizer,
-				noise_multiplier=noise_multiplier,
+				dataloader=client_dataloader,
+				optimizer=client_optimizer,
+				noise_multiplier=client_noise_multiplier,
 			)
 		)
-
-	test_dataloader = DataLoader(
-		test_dataset,
-		batch_size=config.batch_size,
-		shuffle=False,
-		# collate_fn=,
-	)
 
 	return Server(
 		model=model,
@@ -119,7 +144,7 @@ def build(config: Config) -> Server:
 		rounds=config.global_rounds,
 		sample_rate=config.client_sample_rate,
 		clients=clients,
-		generator=generator,
+		generator=torch.Generator().manual_seed(config.seed),
 		max_grad_norm=config.privacy.clip_norm,
 		test_dataloader=test_dataloader,
 		device=device,
@@ -127,6 +152,7 @@ def build(config: Config) -> Server:
 	)
 
 
+# TODO
 def run(argv: list[str] | None = None) -> dict:
 	"""
 	Run the LA-LoRA method.

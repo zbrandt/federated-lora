@@ -19,14 +19,14 @@ class Client:
 	def __init__(
 		self,
 		id: int,
-		shard: Dataset,
+		dataset: Dataset,
 		steps: int,
 		dataloader: DataLoader,
 		optimizer: Optimizer,
 		noise_multiplier: float,
 	) -> None:
 		self.id = id
-		self.shard = shard
+		self.dataset = dataset
 		self.steps = steps
 		self.dataloader = dataloader
 		self.optimizer = optimizer

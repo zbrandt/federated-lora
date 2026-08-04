@@ -1,71 +1,52 @@
 from __future__ import annotations
 
 import numpy as np
-from datasets import Dataset, load_dataset
+import torch
 
 from federated_lora.config import Config
 
 
-# TODO
-def _make_transform(config: Config, processor):
-	""" """
-	image_field = config.image_field
-	label_field = config.label_field
-
-	def transform(batch):
-		images = [img.convert('RGB') for img in batch[image_field]]
-		pixel_values = processor(images, return_tensors='pt')['pixel_values']
-		return {'pixel_values': pixel_values, 'labels': batch[label_field]}
-
-	return transform
-
-
-# TODO
-def _partition_dirichlet(
-	labels: list[int], num_clients: int, alpha: float, rng: np.random.Generator
+def partition_dirichlet(
+	labels: list[int], num_clients: int, alpha: float, seed: int
 ) -> list[list[int]]:
-	""" """
-	labels = np.asarray(labels)
-	client_indices: list[list[int]] = [[] for _ in range(num_clients)]
-	for cls in np.unique(labels):
-		idx = np.where(labels == cls)[0]
+	"""
+	Partition dataset indices into non-iid shards from a Dirichlet distribution.
+
+	Parameters
+	----------
+	labels : list[int]
+
+	num_clients : int
+		The total number of clients.
+	alpha : float
+		The parameter of the Dirichlet distribution.
+	seed : int
+		The starting number used to initialize a random seed generator.
+
+	Returns
+	-------
+	list[list[int]]
+		The non-iid client indices.
+	"""
+	rng = np.random.default_rng(seed)
+	labels = np.array(labels)
+	num_classes = len(np.unique(labels))
+
+	class_indices = [np.where(labels == c)[0] for c in range(num_classes)]
+	client_indices = [[] for _ in range(num_clients)]
+
+	for c in range(num_classes):
+		idx = class_indices[c]
 		rng.shuffle(idx)
-		proportions = rng.dirichlet(np.full(num_clients, alpha))
-		cuts = (np.cumsum(proportions)[:-1] * len(idx)).astype(int)
-		for client_id, shard in enumerate(np.split(idx, cuts)):
-			client_indices[client_id].extend(shard.tolist())
-	for shard in client_indices:
-		rng.shuffle(shard)
+
+		# draw samples from the Dirichlet distribution
+		# repeat alpha num_clients times
+		proportions = rng.dirichlet(np.repeat(alpha, num_clients))
+
+		splits = (np.cumsum(proportions) * len(idx)).astype(int)[:-1]
+		client_splits = np.split(idx, splits)
+
+		for client_id, split in enumerate(client_splits):
+			client_indices[client_id].extend(split.tolist())
+
 	return client_indices
-
-
-# TODO
-def load_datasets(config: Config, processor) -> tuple[list[Dataset], Dataset]:
-	""" """
-	train = load_dataset(config.dataset_id, split=config.train_split)
-	eval = load_dataset(config.dataset_id, split=config.eval_split)
-
-	rng = np.random.default_rng(config.seed)
-
-	if config.partition_strategy == 'noniid':
-		indices = _partition_dirichlet(
-			train[config.label_field],
-			config.num_clients,
-			config.dirichlet_alpha,
-			rng,
-		)
-	else:
-		order = rng.permutation(len(train))
-		indices = [
-			order[i :: config.num_clients].tolist()
-			for i in range(config.num_clients)
-		]
-
-	transform = _make_transform(config, processor)
-
-	train_shards = [
-		train.select(idx).with_transform(transform) for idx in indices
-	]
-	eval_dataset = eval.with_transform(transform)
-
-	return train_shards, eval_dataset
