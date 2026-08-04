@@ -5,13 +5,13 @@ description = "A harness for fine-tuning methods using LoRA under federated mach
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "datasets>=5.0.0",
-    "huggingface-hub>=1.23.0",
+    "datasets<4.0",
+    "huggingface-hub<1.0",
     "matplotlib>=3.10.0",
     "opacus>=1.6.0",
     "peft>=0.19.1",
     "torchvision>=0.28.0",
-    "transformers>=5.13.1",
+    "transformers==4.46.3",
 ]
 
 [dependency-groups]
