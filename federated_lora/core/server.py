@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import torch
 from torch import Generator
 from torch.utils.data import DataLoader
@@ -7,6 +9,7 @@ from transformers import PreTrainedModel
 
 from federated_lora.core.client import Client
 from federated_lora.core.eval import evaluate
+
 
 # TODO
 class Server:
@@ -59,6 +62,7 @@ class Server:
 			)[:k]
 			selected_clients = [self.clients[i] for i in picks.tolist()]
 
+			t0 = time.perf_counter()
 			client_uploads, losses = [], []
 			for client in selected_clients:
 				# broadcast global model to client
@@ -73,7 +77,7 @@ class Server:
 					max_grad_norm=self.max_grad_norm,
 					local_steps=client.steps,
 					device=self.device,
-					round_index=round_index
+					round_index=round_index,
 				)
 
 				# snapshot this client's trained parameters before next client
@@ -92,11 +96,13 @@ class Server:
 			# update the global model with the aggregated weights
 			self.model.load_state_dict(self.global_state, strict=False)
 
+			t1 = time.perf_counter()
 			eval_loss, accuracy = evaluate(
 				self.model,
 				self.test_dataloader,
 				self.device,
 			)
+			t2 = time.perf_counter()
 
 			metrics = {
 				'round_index': round_index,
@@ -108,10 +114,11 @@ class Server:
 			history.append(metrics)
 
 			print(
-				f'[round {round_index}/{self.rounds}] '
+				f'[{self.method.name} round {round_index}/{self.rounds}] '
 				f'train_loss={metrics["train_loss"]:.4f} '
 				f'eval_loss={metrics["eval_loss"]:.4f} '
-				f'acc={metrics["accuracy"]:.4f}',
+				f'acc={metrics["accuracy"]:.4f} '
+				f'train_s={t1 - t0:.1f} eval_s={t2 - t1:.1f}',
 				flush=True,
 			)
 
