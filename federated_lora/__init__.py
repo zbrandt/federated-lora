@@ -61,7 +61,10 @@ def build(config: Config) -> Server:
 			params_head.append(param)
 
 	dataset = load_dataset(path=config.dataset)
-	processor = AutoImageProcessor.from_pretrained(pretrained_model_name_or_path=config.model)
+	processor = AutoImageProcessor.from_pretrained(
+		pretrained_model_name_or_path=config.model,
+		use_fast=True,
+	)
 
 	def collate_fn(batch):
 		images = [sample['img'].convert('RGB') for sample in batch]
@@ -83,17 +86,18 @@ def build(config: Config) -> Server:
 
 	test_dataloader = DataLoader(
 		dataset['test'],
-		batch_size=128,
+		batch_size=256,
 		shuffle=False,
 		collate_fn=collate_fn,
-		num_workers=8,
+		num_workers=config.num_workers,
 		pin_memory=(device.type == 'cuda'),
+		persistent_workers=config.num_workers > 0,
 	)
 
 	clients = []
 	steps = config.global_rounds * config.local_steps
 	for client_id, indices in enumerate(train_shards):
-		client_dataset = dataset["train"].select(indices)
+		client_dataset = dataset['train'].select(indices)
 
 		client_seed = config.seed + client_id
 
