@@ -30,7 +30,7 @@ def evaluate(
 			logits = outputs.logits
 
 			loss = criterion(logits, labels)
-			total_loss = loss.item() * pixel_values.size(0)
+			total_loss += loss.item() * pixel_values.size(0)
 
 			# calculate top-1 accuracy
 			top1_preds = logits.argmax(dim=-1)

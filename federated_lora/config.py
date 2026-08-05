@@ -32,7 +32,7 @@ class Config:
 	dirichlet_alpha: float = (
 		0.1  # the parameter of the Dirichlet distribution.
 	)
-	global_rounds: int = 20  # the number of communication rounds
+	global_rounds: int = 4  # the number of communication rounds
 	local_steps: int = 20  # the number of local update steps per round
 	batch_size: int = 16
 	num_workers: int = 8

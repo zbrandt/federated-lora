@@ -181,23 +181,29 @@ def run(argv: list[str] | None = None) -> dict:
 	server = build(config)
 	history = server.run()
 	result = {'config': asdict(config), 'history': history}
+	client_noise_multipliers = [client.noise_multiplier for client in server.clients]
+	steps = config.global_rounds * config.local_steps
 
-	if config.privacy.noise_multiplier == 0.0:
+	if config.privacy.target_epsilon is None:
 		result['target_epsilon'] = None
 		result['epsilon_breakdown'] = None
 	else:
 		result['target_epsilon'] = config.privacy.target_epsilon
-		steps = config.global_rounds * config.local_steps
 		per_client = [
 			perform_accounting(
 				client.noise_multiplier,
-				config.batch_size / len(client.shard),
+				config.batch_size / len(client.dataset),
 				steps,
 				config.privacy.target_delta,
 			)
 			for client in server.clients
 		]
 		result['epsilon_breakdown'] = {
+			'noise_multiplier_min': min(client_noise_multipliers),
+			'noise_multiplier_mean': sum(client_noise_multipliers)
+			/ len(client_noise_multipliers),
+			'noise_multiplier_max': max(client_noise_multipliers),
+			'noise_multiplier_per_client': client_noise_multipliers,
 			'per_shard_min': min(per_client),
 			'per_shard_mean': sum(per_client) / len(per_client),
 			'per_shard_max': max(per_client),
