@@ -7,8 +7,8 @@ from torch import Generator
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 
-from federated_lora.core.client import Client
-from federated_lora.core.eval import evaluate
+from federated_lora.client import Client
+from federated_lora.eval import evaluate
 
 
 # TODO

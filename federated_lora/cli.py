@@ -28,6 +28,6 @@ def main() -> None:
 
 		run(run_argv)
 	elif args.command == 'plot':
-		import plot_results
+		from federated_lora import plotting
 
-		plot_results.plot(args.inputs, args.output_dir)
+		plotting.plot(args.inputs, args.output_dir)

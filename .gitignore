@@ -169,3 +169,7 @@ poetry.toml
 
 # LSP config files
 pyrightconfig.json
+
+# refactor leftovers (mount blocks deletion; safe to remove)
+.trash/
+.git/index.lock.stale
