@@ -8,12 +8,12 @@ import torch
 from datasets import load_dataset
 from opacus.accountants.utils import get_noise_multiplier
 from torch.optim import SGD
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from transformers import AutoImageProcessor
 
 from federated_lora.config import Config
 from federated_lora.core.client import Client
-from federated_lora.core.data import partition_dirichlet
+from federated_lora.core.data import build_cache, partition_dirichlet
 from federated_lora.core.model import create_peft_model
 from federated_lora.core.privacy import compute_noise_level, perform_accounting
 from federated_lora.core.server import Server
@@ -35,6 +35,10 @@ def build(config: Config) -> Server:
 	Server
 		The configured federated server.
 	"""
+	torch.backends.cudnn.benchmark = True
+	torch.backends.cuda.matmul.allow_tf32 = True
+	torch.backends.cudnn.allow_tf32 = True
+
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 	method = get_method(config.method)
@@ -49,6 +53,7 @@ def build(config: Config) -> Server:
 		device=device,
 	)
 
+	# TODO: move to models
 	params_A, params_B, params_head = [], [], []
 	for name, param in model.named_parameters():
 		if not param.requires_grad:
@@ -66,16 +71,19 @@ def build(config: Config) -> Server:
 		use_fast=True,
 	)
 
-	def collate_fn(batch):
-		images = [sample['img'].convert('RGB') for sample in batch]
-		labels = torch.tensor(
-			[sample['fine_label'] for sample in batch], dtype=torch.long
-		)
+	mean = torch.tensor(processor.image_mean).view(1, 3, 1, 1)
+	std = torch.tensor(processor.image_std).view(1, 3, 1, 1)
 
-		# resize, normalize, and convert to PyTorch tensors
-		inputs = processor(images, return_tensors='pt')
-		inputs['labels'] = labels
-		return inputs
+	train_dataset = build_cache(dataset['train'], processor)
+	test_dataset = build_cache(dataset['test'], processor)
+
+	def collate_fn(batch):
+		images = torch.stack(
+			[item[0] for item in batch]
+		)  # (B,3,224,224) uint8
+		labels = torch.stack([item[1] for item in batch])  # (B,) long
+		pixel_values = images.float().div_(255.0).sub_(mean).div_(std)
+		return {'pixel_values': pixel_values, 'labels': labels}
 
 	train_shards = partition_dirichlet(
 		dataset['train']['fine_label'],
@@ -85,7 +93,7 @@ def build(config: Config) -> Server:
 	)
 
 	test_dataloader = DataLoader(
-		dataset['test'],
+		test_dataset,
 		batch_size=256,
 		shuffle=False,
 		collate_fn=collate_fn,
@@ -97,7 +105,7 @@ def build(config: Config) -> Server:
 	clients = []
 	steps = config.global_rounds * config.local_steps
 	for client_id, indices in enumerate(train_shards):
-		client_dataset = dataset['train'].select(indices)
+		client_dataset = Subset(train_dataset, list(indices))
 
 		client_seed = config.seed + client_id
 
@@ -181,7 +189,9 @@ def run(argv: list[str] | None = None) -> dict:
 	server = build(config)
 	history = server.run()
 	result = {'config': asdict(config), 'history': history}
-	client_noise_multipliers = [client.noise_multiplier for client in server.clients]
+	client_noise_multipliers = [
+		client.noise_multiplier for client in server.clients
+	]
 	steps = config.global_rounds * config.local_steps
 
 	if config.privacy.target_epsilon is None:

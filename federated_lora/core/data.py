@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import torch
+from torch.utils.data import TensorDataset
 
 from federated_lora.config import Config
 
@@ -50,3 +53,24 @@ def partition_dirichlet(
 			client_indices[client_id].extend(split.tolist())
 
 	return client_indices
+
+
+# TODO: refactor as load_datasets
+def build_cache(split, processor):
+	""" """
+	n = len(split)
+	cache = torch.empty((n, 3, 224, 224), dtype=torch.uint8)
+	chunk = 512
+	for i in range(0, n, chunk):
+		rows = split[i : i + chunk]
+		images = [im.convert('RGB') for im in rows['img']]
+		pixels = processor(
+			images,
+			do_rescale=False,
+			do_normalize=False,
+			return_tensors='pt',
+		)['pixel_values']
+		cache[i : i + chunk] = pixels.round_().clamp_(0, 255).to(torch.uint8)
+	labels = torch.tensor(split['fine_label'], dtype=torch.long)
+
+	return TensorDataset(cache, labels)
