@@ -10,15 +10,17 @@ methods from the federated and private LoRA literature:
 - **FFA-LoRA**
 - **RoLoRA**
 
-[Federated learning]() trains a shared model across many clients under the 
-orchestration of a central server, keeping each client's data decentralized and 
-reducing the cost and privacy risk of storing it centrally. [LoRA]() (Low-Rank 
-Adaptation) adapts a large pre-trained model to a downstream task without 
-retraining all of its weights: it freezes the pre-trained weights and injects 
-small, trainable low-rank matrices into each layer, reducing the number of 
-trainable parameters. This harness combines the two under 
-[differential privacy](), applying per-sample gradient clipping and Gaussian 
-noise to bound each client's privacy loss.
+[Federated learning](https://arxiv.org/abs/1912.04977) trains a shared model 
+across many clients under the orchestration of a central server, keeping each 
+client's data decentralized and reducing the cost and privacy risk of storing 
+it centrally. [LoRA](https://arxiv.org/abs/2106.09685) (Low-Rank Adaptation) 
+adapts a large pre-trained model to a downstream task without retraining all of 
+its weights: it freezes the pre-trained weights and injects small, trainable 
+low-rank matrices into each layer, reducing the number of trainable parameters. 
+This harness combines the two under 
+[differential privacy](https://en.wikipedia.org/wiki/Differential_privacy), 
+applying per-sample gradient clipping and Gaussian noise to bound each client's 
+privacy loss.
 
 ## Installation
 
