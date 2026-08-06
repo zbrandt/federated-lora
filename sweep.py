@@ -65,6 +65,7 @@ import numpy as np
 
 from flora import build
 from flora.config import GLUE_TASKS, Config
+from flora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
 
 
 def _parse_epsilon(token: str) -> float | None:
@@ -134,22 +135,34 @@ def run_rank_sweep(args: argparse.Namespace) -> list[tuple[int, int, dict]]:
 
 
 def run_dp_sweep(args: argparse.Namespace) -> list[tuple[float | None, int, dict]]:
-    """Rank held constant; the shared per-client DP epsilon varied between runs."""
+    """Rank held constant (or, with --auto-rank, chosen per epsilon by flora.rank_rule); the
+    shared per-client DP epsilon varied between runs."""
     runs: list[tuple[float | None, int, dict]] = []
 
     for eps in args.epsilons:
         eps_tag = "none" if eps is None else _fmt(eps)
         for seed in args.seeds:
             base = _base_config(args, seed)
+
+            auto_rank = getattr(args, "auto_rank", False)
+            if auto_rank:
+                candidate_ranks = tuple(getattr(args, "candidate_ranks", [2, 4, 6, 8]))
+                shard_size = GLUE_TRAIN_SIZES[base.dataset_task] / base.num_clients
+                rank = recommended_rank(base, eps, shard_size, candidate_ranks=candidate_ranks)
+                print(f"[sweep] auto-rank: eps={eps_tag} -> rank={rank}")
+            else:
+                rank = args.rank
+
             epsilons = None if eps is None else [eps] * base.num_clients
             config = replace(
                 base,
-                lora_rank=args.rank,
+                lora_rank=rank,
                 client_ranks=None,
                 client_epsilons=epsilons,
-                method=f"flora-rank{args.rank}-eps{eps_tag}",
+                method=f"flora-rank{rank}-eps{eps_tag}",
             )
-            tag = f"dp_sweep_rank{args.rank}_eps{eps_tag}_rounds{config.rounds}_nc{config.num_clients}_seed{seed}"
+            rank_tag = f"auto{rank}" if auto_rank else str(rank)
+            tag = f"dp_sweep_rank{rank_tag}_eps{eps_tag}_rounds{config.rounds}_nc{config.num_clients}_seed{seed}"
             result = _run_one(config, tag, Path(args.results_dir), args.force)
             runs.append((eps, seed, result))
 
@@ -331,8 +344,14 @@ def main() -> None:
 
     dp_p = sub.add_parser("dp", help="fixed rank, vary DP epsilon")
     _add_common_args(dp_p)
-    dp_p.add_argument("--rank", type=int, default=8)
+    dp_p.add_argument("--rank", type=int, default=8,
+                       help="ignored when --auto-rank is set")
     dp_p.add_argument("--epsilons", type=_parse_epsilon, nargs="+", default=[None, 1.0, 2.0, 4.0, 8.0])
+    dp_p.add_argument("--auto-rank", action="store_true",
+                       help="pick lora_rank per epsilon via flora.rank_rule.recommended_rank instead of "
+                            "using a fixed --rank for every point")
+    dp_p.add_argument("--candidate-ranks", type=int, nargs="+", default=[2, 4, 6, 8],
+                       help="ranks recommended_rank chooses among when --auto-rank is set")
 
     both_p = sub.add_parser("both", help="run both sweeps with default sweep points")
     _add_common_args(both_p)
