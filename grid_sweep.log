@@ -2730,8 +2730,8 @@ Notes:
 [round 15/100] train_loss=1.1903 eval_loss=2.4570 acc=0.5092 eps=0.3871
 [round 16/100] train_loss=0.7806 eval_loss=2.0306 acc=0.5092 eps=0.3994
 [round 17/100] train_loss=1.7463 eval_loss=0.7552 acc=0.4908 eps=0.4358
-loss=1.6170 acc=0.5092 eps=0.6189
-[round 22/100] train_loss=1.1339 eval_loss=3.9730 acc=0.5092 eps=0.6483
+[round 18/100] train_loss=0.6437 eval_loss=0.8373 acc=0.5092 eps=0.5145
+loss=3.9730 acc=0.5092 eps=0.6483
 [round 23/100] train_loss=2.0185 eval_loss=1.0013 acc=0.4908 eps=0.4309
 [round 24/100] train_loss=0.6783 eval_loss=1.0738 acc=0.5092 eps=0.4273
 [round 25/100] train_loss=0.5724 eval_loss=4.2790 acc=0.5092 eps=0.6766
@@ -3156,7 +3156,8 @@ Notes:
 [round 24/100] train_loss=1.3262 eval_loss=1.8677 acc=0.4908 eps=0.5990
 [round 25/100] train_loss=1.5444 eval_loss=0.9353 acc=0.5092 eps=0.6302
 [round 26/100] train_loss=0.5744 eval_loss=1.3223 acc=0.5092 eps=0.5118
-1390 [00:00<?, ? examples/s]Map: 100%|██████████| 1390/1390 [00:00<00:00, 31682.99 examples/s]
+[round 27/100] train_loss=1.0717 eval_loss=1.5445 acc=0.4908 eps=0.6602
+390/1390 [00:00<00:00, 31682.99 examples/s]
 Map:   0%|          | 0/1321 [00:00<?, ? examples/s]Map: 100%|██████████| 1321/1321 [00:00<00:00, 32845.90 examples/s]
 Map:   0%|          | 0/4346 [00:00<?, ? examples/s]Map: 100%|██████████| 4346/4346 [00:00<00:00, 38927.46 examples/s]Map: 100%|██████████| 4346/4346 [00:00<00:00, 38355.08 examples/s]
 Map:   0%|          | 0/1181 [00:00<?, ? examples/s]Map: 100%|██████████| 1181/1181 [00:00<00:00, 32916.29 examples/s]
@@ -3514,14 +3515,15 @@ Notes:
 [round 53/100] train_loss=1.6789 eval_loss=3.5532 acc=0.4908 eps=0.5365
 [round 54/100] train_loss=1.7303 eval_loss=2.4501 acc=0.4908 eps=0.8662
 [round 55/100] train_loss=1.3948 eval_loss=1.5210 acc=0.4908 eps=0.8904
-=0.4908 eps=0.8662
-[round 55/100] train_loss=1.5052 eval_loss=1.6203 acc=0.4908 eps=0.8904
+[round 56/100] train_loss=1.2397 eval_loss=2.4946 acc=0.5092 eps=0.6853
+=0.4908 eps=0.8904
 [round 56/100] train_loss=1.3747 eval_loss=2.5594 acc=0.5092 eps=0.6853
 [round 57/100] train_loss=2.1883 eval_loss=0.8453 acc=0.4908 eps=0.9142
 [round 58/100] train_loss=0.9120 eval_loss=0.6802 acc=0.4920 eps=0.7700
 [round 59/100] train_loss=0.7632 eval_loss=0.6544 acc=0.5344 eps=0.7489
 [round 60/100] train_loss=0.5814 eval_loss=2.6098 acc=0.5092 eps=0.7709
-wrote results/sweep/grid_sweep_r4_eps1_rounds100_nc20_bs512_ep3_seed3.json
+[round 61/100] train_loss=1.7366 eval_loss=0.7636 acc=0.5092 eps=0.7955
+on
 [sweep] grid_sweep_r4_eps1_rounds100_nc20_bs512_ep3_seed4: running (100 rounds, 20 clients)...
 Map:   0%|          | 0/988 [00:00<?, ? examples/s]Map: 100%|██████████| 988/988 [00:00<00:00, 32704.90 examples/s]
 Map:   0%|          | 0/1613 [00:00<?, ? examples/s]Map: 100%|██████████| 1613/1613 [00:00<00:00, 33486.34 examples/s]
@@ -3621,3 +3623,4 @@ Notes:
 [round 58/100] train_loss=0.9128 eval_loss=0.7085 acc=0.4908 eps=0.7700
 [round 59/100] train_loss=0.7712 eval_loss=0.6776 acc=0.4908 eps=0.7489
 [round 60/100] train_loss=0.5902 eval_loss=2.4433 acc=0.5092 eps=0.7709
+[round 61/100] train_loss=1.6996 eval_loss=0.7799 acc=0.5092 eps=0.7955
