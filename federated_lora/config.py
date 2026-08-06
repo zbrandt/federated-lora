@@ -12,7 +12,7 @@ IMAGE_TASKS = {
 @dataclass
 class PrivacyConfig:
 	clip_norm: float = 1.0  # per-sample L2 clipping norm
-	target_epsilon: float = 3.0  # the target privacy loss budget
+	target_epsilon: float | None = 3.0  # target privacy budget with None disabling differential privacy
 	target_delta: float = 1e-5  # TODO
 	noise_multiplier: float = (
 		0.0  # the Gaussian noise multiplier for differential privacy

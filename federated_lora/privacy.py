@@ -5,7 +5,10 @@ from opacus.accountants.utils import get_noise_multiplier
 
 
 def compute_noise_level(
-	target_epsilon: float, target_delta: float, sample_rate: float, steps: int
+	target_epsilon: float | None,
+	target_delta: float,
+	sample_rate: float,
+	steps: int,
 ) -> float:
 	"""
 	Compute the noise level sigma to reach a total budget of
@@ -14,8 +17,8 @@ def compute_noise_level(
 
 	Parameters
 	----------
-	target_epsilon : float
-		The target privacy loss budget.
+	target_epsilon : float | None
+		The target privacy loss budget; None disables DP (returns 0.0 noise).
 	target_delta : float
 		TODO
 	sample_rate : float
@@ -28,17 +31,15 @@ def compute_noise_level(
 	float
 		The Gaussian noise multiplier for differential privacy.
 	"""
-	if target_epsilon == 0.0:
-		noise_multiplier = 0.0
-	else:
-		noise_multiplier = get_noise_multiplier(
-			target_epsilon=target_epsilon,
-			target_delta=target_delta,
-			sample_rate=sample_rate,
-			steps=steps,
-		)
+	if target_epsilon is None:
+		return 0.0
 
-	return noise_multiplier
+	return get_noise_multiplier(
+		target_epsilon=target_epsilon,
+		target_delta=target_delta,
+		sample_rate=sample_rate,
+		steps=steps,
+	)
 
 
 def perform_accounting(
