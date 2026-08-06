@@ -8,6 +8,8 @@ from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
+from federated_lora.aggregate import weighted_mean
+
 
 class DPLoRA:
 	name = 'dp_lora'
@@ -54,11 +56,8 @@ class DPLoRA:
 		return model.to_standard_module(), total_loss / max(1, local_steps)
 
 	def aggregate(
-		self, client_uploads: list[dict[str, torch.Tensor]]
+		self,
+		client_uploads: list[dict[str, torch.Tensor]],
+		weights: list[float],
 	) -> dict[str, torch.Tensor]:
-		return {
-			key: torch.stack(
-				[upload[key].float() for upload in client_uploads], dim=0
-			).mean(dim=0)
-			for key in client_uploads[0]
-		}
+		return weighted_mean(client_uploads, weights)

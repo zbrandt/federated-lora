@@ -63,7 +63,7 @@ class Server:
 			selected_clients = [self.clients[i] for i in picks.tolist()]
 
 			t0 = time.perf_counter()
-			client_uploads, losses = [], []
+			client_uploads, weights, losses = [], [], []
 			for client in selected_clients:
 				# broadcast global model to client
 				self.model.load_state_dict(self.global_state, strict=False)
@@ -88,10 +88,12 @@ class Server:
 					if key in self.trainable_parameters
 				}
 				client_uploads.append(upload)
+				weights.append(len(client.dataset))
 				losses.append(loss)
 
-			# aggregate client uploads into the new global state
-			self.global_state = self.method.aggregate(client_uploads)
+			# aggregate client uploads into the new global state using 
+			# method-specific rule 
+			self.global_state = self.method.aggregate(client_uploads, weights)
 
 			# update the global model with the aggregated weights
 			self.model.load_state_dict(self.global_state, strict=False)

@@ -9,6 +9,8 @@ from torch.nn import functional as F
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
+from federated_lora.aggregate import uniform_mean
+
 
 class LaLoRA:
 	name = 'lalora' # TODO: rename to la_lora
@@ -110,26 +112,8 @@ class LaLoRA:
 		return model.to_standard_module(), total_loss / max(1, local_steps)
 
 	def aggregate(
-		self, client_uploads: list[dict[str, torch.Tensor]]
+		self,
+		client_uploads: list[dict[str, torch.Tensor]],
+		weights: list[float],
 	) -> dict[str, torch.Tensor]:
-		"""
-		Average each trainable tensor across the client uploads (FedAvg).
-
-		Parameters
-		----------
-		client_uploads : list[dict[str, torch.Tensor]]
-			One state-dict snapshot per client, each restricted to the
-			federated (trainable) keys: the LoRA A/B factors and the
-			classification head.
-
-		Returns
-		-------
-		dict[str, torch.Tensor]
-			The new global state, i.e. the per-key mean over clients.
-		"""
-		return {
-			key: torch.stack(
-				[upload[key].float() for upload in client_uploads], dim=0
-			).mean(dim=0)
-			for key in client_uploads[0]
-		}
+		return uniform_mean(client_uploads)

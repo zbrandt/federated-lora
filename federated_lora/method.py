@@ -21,8 +21,31 @@ class Method(Protocol):
 		local_steps: int,
 		device: str,
 		round_index: int = 0,
-	) -> tuple[Module, float]: ...
+	) -> tuple[Module, float]: 
+		""" """
+		...
+
 
 	def aggregate(
-		self, client_uploads: list[dict[str, torch.Tensor]]
-	) -> dict[str, torch.Tensor]: ...
+		self,
+		client_uploads: list[dict[str, torch.Tensor]],
+		weights: list[float],
+	) -> dict[str, torch.Tensor]:
+		"""
+		Aggregate client uploads into the update model, with each method 
+		defining its own aggregation rule.
+		 
+		Parameters
+		----------
+		client_uploads : list[dict[str, torch.Tensor]]
+			TODO 
+		weights : list[float] 
+			The per-client training-set sizes aligned with ``client_uploads`` 
+			for weighted updates.
+
+		Returns
+		-------
+		dict[str, torch.Tensor]
+			The updated model.
+		"""
+		...
