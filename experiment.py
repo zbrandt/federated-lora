@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import random
 from dataclasses import asdict
@@ -9,18 +8,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from opacus import PrivacyEngine
-from opacus.utils.uniform_sampler import UniformWithReplacementSampler
-from torch.optim import SGD
-from torch.utils.data import DataLoader
-from transformers import AutoImageProcessor
 
 from federated_lora.client import Client
 from federated_lora.config import Config
-from federated_lora.data import load_datasets
+from federated_lora.data import load_datasets, prepare_dataloaders
 from federated_lora.methods import get_method
 from federated_lora.model import create_peft_model
-from federated_lora.privacy import compute_noise_level
 from federated_lora.server import Server
 
 
@@ -76,108 +69,23 @@ def build(config: Config) -> Server:
 		seed=config.seed,
 	)
 
-	# TODO: move to Client __init__.py
-	clients = []
-	for i in range(config.num_clients):
-		client_model = copy.deepcopy(model).to('cpu')
-
-		# TODO: move to model.py
-		params_A, params_B, params_head = [], [], []
-		for name, param in client_model.named_parameters():
-			if not param.requires_grad:
-				continue
-			if 'lora_A' in name:
-				params_A.append(param)
-			elif 'lora_B' in name:
-				params_B.append(param)
-			else:
-				params_head.append(param)
-
-		optimizer = SGD(
-			[
-				{'params': params_A, 'lr': config.lr_a},
-				{'params': params_B, 'lr': config.lr_b},
-				{'params': params_head, 'lr': config.lr_head},
-			],
-			weight_decay=0.0
-		)
-
-		shard = np.load(data_dir / f'shard_{i}.npz')
-		shard_images = shard['images']
-		shard_labels = shard['labels']
-		sigma = compute_noise_level(
-			client_data=shard,
-			batch_size=config.batch_size,
-			global_rounds=config.global_rounds,
-			local_steps=config.local_steps,
-			target_epsilon=config.target_epsilon,
-			target_delta=config.target_delta,
-		)
-
-		# TODO: move into a "create_dataloader" method in data.py 109-134
-		# and test_dataloader
-		processor = AutoImageProcessor.from_pretrained(config.model, use_fast=True)
-
-		def collate(batch):
-			images = [item[0] for item in batch]
-			labels = [item[1] for item in batch]
-
-			proc = processor(images=images, return_tensors='pt', device='cuda')
-
-			return {
-				'pixel_values': proc['pixel_values'],
-				'labels': torch.tensor(labels, dtype=torch.long),
-			}
-
-		client_dataset = list(zip(shard_images, shard_labels))
-		sample_rate = min(1.0, config.batch_size / max(1, len(shard_labels)))
-		batch_sampler = UniformWithReplacementSampler(
-			num_samples=len(shard_labels),
-			sample_rate=sample_rate,
-		)
-
-		dataloader = DataLoader(
-			client_dataset,
-			batch_sampler=batch_sampler,
-			collate_fn=collate,
-			num_workers=0,
-			pin_memory=torch.cuda.is_available(),
-		)
-
-		privacy_engine = PrivacyEngine()
-		client_model, optimizer, dataloader = privacy_engine.make_private(
-			module=client_model,
-			optimizer=optimizer,
-			data_loader=dataloader,
-			noise_multiplier=sigma,
-			max_grad_norm=config.clip_norm,
-		)
-
-		clients.append(
-			Client(
-				id=i,
-				model=client_model,
-				dataset=client_dataset,
-				steps=config.local_steps,
-				dataloader=dataloader,
-				optimizer=optimizer,
-				noise_multiplier=sigma,
-				device=device,
-				privacy_engine=privacy_engine,
-			)
-		)
-
-	test_data = np.load(data_dir / 'test.npz')
-	test_dataset = list(zip(test_data['images'], test_data['labels']))
-
-	test_dataloader = DataLoader(
-		test_dataset,
-		batch_size=256,
-		shuffle=False,
-		collate_fn=collate,
-		num_workers=0,
-		pin_memory=torch.cuda.is_available(),
+	client_dataloaders, test_dataloader = prepare_dataloaders(
+		model=config.model,
+		data_dir=data_dir,
+		num_clients=config.num_clients,
+		batch_size=config.batch_size,
 	)
+
+	clients = [
+		Client(
+			id=i,
+			model=model,
+			dataloader=dataloader,
+			config=config,
+			device=device,
+		)
+		for i, dataloader in enumerate(client_dataloaders)
+	]
 
 	return Server(
 		model=model,

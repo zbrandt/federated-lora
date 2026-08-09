@@ -4,8 +4,11 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
+import torch
 from datasets import load_dataset
+from opacus.utils.uniform_sampler import UniformWithReplacementSampler
 from torch.utils.data import DataLoader
+from transformers import AutoImageProcessor
 
 
 def partition_dirichlet(
@@ -56,6 +59,91 @@ def partition_dirichlet(
 def cycle(dataloader: DataLoader) -> Iterable:
 	while True:
 		yield from dataloader
+
+# TODO: rewrite docstring
+def prepare_dataloaders(
+	model: str,
+	data_dir: Path,
+	num_clients: int,
+	batch_size: int,
+	eval_batch_size: int = 256,
+) -> tuple[list[DataLoader], DataLoader]:
+	"""
+	Build one DP (Poisson-sampled) train loader per client plus a single test
+	loader, all sharing one image processor.
+
+	The image processor is loaded once here and bound into a single ``collate``
+	closure, so every loader shares the same stable reference. Train loaders use
+	Opacus' ``UniformWithReplacementSampler`` (Poisson sampling at rate
+	``batch_size / n``) as required for DP-SGD so they can be wrapped by
+	``make_private``; the test loader uses fixed-size, unshuffled batches.
+
+	Parameters
+	----------
+	model : str
+		The model id whose image processor collates the raw images.
+	data_dir : Path
+		The directory holding ``shard_{i}.npz`` per client and ``test.npz``.
+	num_clients : int
+		The number of client shards to load.
+	batch_size : int
+		The train lot size (also the Poisson sampling target).
+	eval_batch_size : int
+		The fixed batch size for the test loader.
+
+	Returns
+	-------
+	tuple[list[DataLoader], DataLoader]
+		The per-client train loaders and the shared test loader.
+	"""
+	processor = AutoImageProcessor.from_pretrained(model, use_fast=True)
+	pin_memory = torch.cuda.is_available()
+
+	def collate(batch):
+		images = [item[0] for item in batch]
+		labels = [item[1] for item in batch]
+
+		proc = processor(images=images, return_tensors='pt')
+
+		return {
+			'pixel_values': proc['pixel_values'],
+			'labels': torch.tensor(labels, dtype=torch.long),
+		}
+
+	client_dataloaders = []
+	for i in range(num_clients):
+		shard = np.load(data_dir / f'shard_{i}.npz')
+		dataset = list(zip(shard['images'], shard['labels']))
+
+		n = len(dataset)
+		sample_rate = min(1.0, batch_size / max(1, n))
+		batch_sampler = UniformWithReplacementSampler(
+			num_samples=n,
+			sample_rate=sample_rate,
+		)
+
+		train_dataloader = DataLoader(
+			dataset,
+			batch_sampler=batch_sampler,
+			collate_fn=collate,
+			num_workers=0,
+			pin_memory=pin_memory,
+		)
+
+		client_dataloaders.append(train_dataloader)
+
+	test = np.load(data_dir / 'test.npz')
+	test_dataset = list(zip(test['images'], test['labels']))
+	test_dataloader = DataLoader(
+		test_dataset,
+		batch_size=eval_batch_size,
+		shuffle=False,
+		collate_fn=collate,
+		num_workers=0,
+		pin_memory=pin_memory,
+	)
+
+	return client_dataloaders, test_dataloader
 
 
 def load_datasets(name: str, num_clients: int, alpha: float, seed: int):

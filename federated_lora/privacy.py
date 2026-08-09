@@ -6,9 +6,9 @@ import numpy as np
 from opacus.accountants import RDPAccountant
 from opacus.accountants.utils import get_noise_multiplier
 
-
+# TODO: rewrite docstring
 def compute_noise_level(
-	client_data: dict,
+	num_examples: int,
 	batch_size: int,
 	global_rounds: int,
 	local_steps: int,
@@ -22,10 +22,10 @@ def compute_noise_level(
 
 	Parameters
 	----------
-	client_data : dict
-		TODO
+	num_examples : int
+		The number of local training examples; sets the sampling rate.
 	batch_size : int
-		TODO
+		The local batch (lot) size used for Poisson/uniform sampling.
 	global_rounds : int
 		The number of communication rounds.
 	local_steps : int
@@ -40,7 +40,7 @@ def compute_noise_level(
 	float
 		The Gaussian noise multiplier for differential privacy.
 	"""
-	sample_rate = batch_size / len(client_data['labels'])
+	sample_rate = batch_size / num_examples
 	if target_epsilon == 0.0:
 		sigma = 0.0
 	else:
@@ -54,7 +54,7 @@ def compute_noise_level(
 		)
 
 	print(
-		f'size: {len(client_data["labels"])}, '
+		f'size: {num_examples}, '
 		f'sample_rate: {sample_rate}, sigma: {sigma}'
 	)
 	return sigma

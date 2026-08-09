@@ -11,6 +11,7 @@ from transformers import PreTrainedModel
 from federated_lora.client import Client
 from federated_lora.eval import evaluate
 from federated_lora.method import Method
+from federated_lora.model import get_trainable_state, load_trainable_state
 
 
 class Server:
@@ -71,18 +72,9 @@ class Server:
 			t0 = time.perf_counter()
 			uploads, losses = [], []
 			for client in selected:
-				# TODO: move to broadcast method?
-				trainable_parameters = {
-					name
-					for name, param in self.model.named_parameters()
-					if param.requires_grad
-				}
-				global_state = {
-					key: value.detach().cpu().clone()
-					for key, value in self.model.state_dict().items()
-					if key in trainable_parameters
-				}
-				client.model._module.load_state_dict(global_state, strict=False)
+				# broadcast model weights
+				global_state = get_trainable_state(self.model)
+				load_trainable_state(client.model, global_state)
 
 				# compute local client uploads
 				upload, loss = client.update(round=round, method=self.method)
@@ -94,7 +86,7 @@ class Server:
 			agg = self.method.aggregate(uploads=uploads, round=round)
 
 			# update the global model with the aggregated weights
-			self.model.load_state_dict(agg, strict=False)
+			load_trainable_state(self.model, agg)
 
 			t1 = time.perf_counter()
 			test_loss, top1_acc, top5_acc = evaluate(
