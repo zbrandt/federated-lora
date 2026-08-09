@@ -34,4 +34,3 @@ class Config:
 	lr_a: float = 0.1
 	lr_b: float = 0.1
 	lr_head: float = 0.1
-	lr_decay: float = 0.99  # multiplies the lr each global round

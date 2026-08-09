@@ -92,7 +92,7 @@ def build(config: Config) -> Server:
 			[
 				{'params': params_A, 'lr': config.lr_a},
 				{'params': params_B, 'lr': config.lr_b},
-				{'params': params_head, 'lr': config.lr_a},
+				{'params': params_head, 'lr': config.lr_head},
 			],
 			weight_decay=0.0
 		)
