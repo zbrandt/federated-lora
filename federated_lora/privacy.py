@@ -16,31 +16,35 @@ def compute_noise_level(
 	target_delta: float,
 ) -> float:
 	"""
-	Compute the noise level sigma to reach a total budget of
-	(``target_epsilon``, ``target_delta``) at the end of steps, with a given
-	``sample_rate``.
+	Compute the Gaussian noise multiplier (sigma) that reaches a total budget of
+	(``target_epsilon``, ``target_delta``) over all local DP-SGD steps for one
+	client, given its data size and batch size.
 
 	Parameters
 	----------
-	target_epsilon : float
-		The target privacy loss budget.
-	target_delta : float
+	client_data : dict
 		TODO
-	sample_rate : float
-		The local data sampling rate.
-	steps : int
-		The product of the number of communication rounds and the number of
-		local update steps per round.
+	batch_size : int
+		TODO
+	global_rounds : int
+		The number of communication rounds.
+	local_steps : int
+		The number of local update steps per round.
+	target_epsilon : float
+		The target privacy loss budget. ``0.0`` disables DP (sigma = 0).
+	target_delta : float
+		The target failure probability of the (epsilon, delta)-DP guarantee.
+
 	Returns
 	-------
 	float
 		The Gaussian noise multiplier for differential privacy.
 	"""
+	sample_rate = batch_size / len(client_data['labels'])
 	if target_epsilon == 0.0:
 		sigma = 0.0
 	else:
 		steps = global_rounds * local_steps
-		sample_rate = batch_size / len(client_data['labels'])
 		sigma = get_noise_multiplier(
 			target_epsilon=target_epsilon,
 			target_delta=target_delta,
@@ -50,7 +54,8 @@ def compute_noise_level(
 		)
 
 	print(
-		f'size: {len(client_data)}, sample_rate: {sample_rate}, sigma: {sigma}'
+		f'size: {len(client_data["labels"])}, '
+		f'sample_rate: {sample_rate}, sigma: {sigma}'
 	)
 	return sigma
 
