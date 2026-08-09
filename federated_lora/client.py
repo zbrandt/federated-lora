@@ -82,14 +82,15 @@ class Client:
 			total_loss += float(loss.item())
 
 		# TODO: move to model.py?
+		unwrapped = self.model._module
 		trainable_parameters = {
 			name
-			for name, param in self.model.named_parameters()
+			for name, param in unwrapped.named_parameters()
 			if param.requires_grad
 		}
 		upload = {
 			key: value.detach().cpu().clone()
-			for key, value in self.model.state_dict().items()
+			for key, value in unwrapped.state_dict().items()
 			if key in trainable_parameters
 		}
 

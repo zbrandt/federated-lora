@@ -56,7 +56,7 @@ class Server:
 					for key, value in self.model.state_dict().items()
 					if key in trainable_parameters
 				}
-				client.model.load_state_dict(global_state, strict=False)
+				client.model._module.load_state_dict(global_state, strict=False)
 
 				# compute local client uploads
 				upload, loss = client.update(round=round, method=self.method)
