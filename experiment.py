@@ -63,6 +63,11 @@ def build(config: Config) -> Server:
 		device=device,
 	)
 
+	method = get_method(config.method)
+
+	# select trainable parameters
+	method.prepare_model(model)
+
 	# TODO: train shards, test OR data loaders
 	data_dir = load_datasets(
 		name=config.dataset,
@@ -162,7 +167,6 @@ def build(config: Config) -> Server:
 			)
 		)
 
-	method = get_method(config.method)
 	test_data = np.load(data_dir / 'test.npz')
 	test_dataset = list(zip(test_data['images'], test_data['labels']))
 

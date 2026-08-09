@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import random
 import time
+from collections import defaultdict
 
+import torch
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 
@@ -31,6 +33,30 @@ class Server:
 		self.test_dataloader = test_dataloader
 		self.device = device
 		self.seed = seed
+
+	@staticmethod
+	def fedavg(
+		uploads: list[dict[str, torch.Tensor]],
+	) -> dict[str, torch.Tensor]:
+		"""
+		TODO
+
+		Parameters
+		----------
+		uploads : list[dict[str, torch.Tensor]]
+			TODO
+
+		Returns
+		-------
+		dict[str, torch.Tensor]
+			TODO
+		"""
+		return {
+			key: torch.stack(
+				[upload[key].float() for upload in uploads], dim=0
+			).mean(dim=0)
+			for key in uploads[0]
+		}
 
 	def run(self):
 		""" """
