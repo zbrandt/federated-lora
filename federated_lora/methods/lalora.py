@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 
 class LaLoRA:
-	name = 'lalora' # TODO: rename to la_lora
+	name = 'lalora'  # TODO: rename to la_lora
 
 	# TODO
 	def smooth(self, grad: torch.Tensor, mode: str) -> torch.Tensor:

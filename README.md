@@ -39,13 +39,13 @@ the ICE.
 Run a method on a task for a given seed.
 
 ```bash
-# fine-tune ViT-Base on CIFAR-100 with LA-LoRA
-python -m federated_lora run --method lalora --task cifar100 --seed 42
+# fine-tune ViT-Base on CIFAR-100 with RoLoRA
+python experiment.py --task cifar100 --method rolora --seed 42
 ```
 
 Each run auto-saves to `results/<method>_<task>_seed<seed>.json`
 
-The CLI exposes `--method`, `--task`, `--seed`, and `--results-dir`. The full 
+The CLI exposes `--method`, `--task`, `--seed`, and `--output-dir`. The full 
 harness configuration of hyperparameters (client count, global rounds, LoRA 
 rank, learning rates, privacy budget, etc.) lives in `federated_lora/config.py`. 
 

@@ -4,11 +4,9 @@ import torch
 from peft import LoraConfig, PeftModel, get_peft_model
 from transformers import AutoModelForImageClassification
 
-from federated_lora.config import Config
-
 
 def create_peft_model(
-	model: str,
+	name: str,
 	num_labels: int,
 	lora_rank: int,
 	lora_alpha: int,
@@ -22,10 +20,10 @@ def create_peft_model(
 
 	Parameters
 	----------
-	model : str
+	name : str
 		The model id of a pretrained model.
 	num_labels : int
-		TODO
+		The number of labels to use in the classification layer.
 	lora_rank : int
 		The LoRA attention dimension (the "rank").
 	target_modules : tuple[str, ...]
@@ -43,9 +41,7 @@ def create_peft_model(
 		The PEFT model object from the in-place modified model and LoRA config.
 	"""
 	base = AutoModelForImageClassification.from_pretrained(
-		model,
-		num_labels=num_labels,
-		ignore_mismatched_sizes=True,  # TODO
+		name, num_labels=num_labels, ignore_mismatched_sizes=True
 	).to(device)
 
 	peft_config = LoraConfig(
@@ -53,9 +49,8 @@ def create_peft_model(
 		lora_alpha=lora_alpha,
 		target_modules=target_modules,
 		lora_dropout=lora_dropout,
+		bias='none',
 		modules_to_save=['classifier'],
 	)
 
-	model = get_peft_model(base, peft_config)
-
-	return model
+	return get_peft_model(base, peft_config)
