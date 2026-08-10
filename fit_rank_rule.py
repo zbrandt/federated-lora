@@ -12,15 +12,15 @@ from pathlib import Path
 
 import numpy as np
 
-from flora.config import Config
-from flora.rank_rule import GLUE_TRAIN_SIZES, noise_multiplier
+from ffalora.config import Config
+from ffalora.rank_rule import GLUE_TRAIN_SIZES, noise_multiplier
 from validate_rank_rule import _final_accuracy, load_grid
 
 # Loads the final accuracies from the no-DP rank sweep.
 def load_rank_sweep(results_dir: Path, tail: int) -> dict[int, list[float]]:
     """{rank: [final_accuracy per seed]} from the no-DP rank sweep."""
     by_rank: dict[int, list[float]] = defaultdict(list)
-    for path in sorted(results_dir.glob("rank_sweep_r*_epsnone_seed*.json")):
+    for path in sorted(results_dir.glob("rank_sweep_r*_epsnone*_seed*.json")):
         result = json.loads(path.read_text(encoding="utf-8"))
         rank = result["config"]["lora_rank"]
         by_rank[rank].append(_final_accuracy(result, tail))

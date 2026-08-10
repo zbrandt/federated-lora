@@ -16,9 +16,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from flora import build
-from flora.config import GLUE_TASKS, Config
-from flora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
+from ffalora import build
+from ffalora.config import GLUE_TASKS, Config
+from ffalora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
 
 # Parse a string token into a float or None (for "none" or "None").
 def _parse_epsilon(token: str) -> float | None:
@@ -51,7 +51,9 @@ def _run_one(config: Config, tag: str, results_dir: Path, force: bool) -> dict:
     result = {"config": asdict(config), "history": [asdict(metric) for metric in history]}
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    tmp_path = path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    tmp_path.replace(path)  # atomic on POSIX and Windows -- never leaves a truncated result file
     print(f"[sweep] {tag}: wrote {path}")
     return result
 
@@ -87,7 +89,7 @@ def run_rank_sweep(args: argparse.Namespace) -> list[tuple[int, int, dict]]:
 
 # Run a sweep over different DP epsilon values.
 def run_dp_sweep(args: argparse.Namespace) -> list[tuple[float | None, int, dict]]:
-    """Rank held constant (or, with --auto-rank, chosen per epsilon by flora.rank_rule); the
+    """Rank held constant (or, with --auto-rank, chosen per epsilon by ffalora.rank_rule); the
     shared per-client DP epsilon varied between runs."""
     runs: list[tuple[float | None, int, dict]] = []
 
@@ -288,7 +290,7 @@ def main() -> None:
                        help="ignored when --auto-rank is set")
     dp_p.add_argument("--epsilons", type=_parse_epsilon, nargs="+", default=[None, 1.0, 2.0, 4.0, 8.0])
     dp_p.add_argument("--auto-rank", action="store_true",
-                       help="pick lora_rank per epsilon via flora.rank_rule.recommended_rank instead of "
+                       help="pick lora_rank per epsilon via ffalora.rank_rule.recommended_rank instead of "
                             "using a fixed --rank for every point")
     dp_p.add_argument("--candidate-ranks", type=int, nargs="+", default=[2, 4, 6, 8],
                        help="ranks recommended_rank chooses among when --auto-rank is set")

@@ -10,8 +10,8 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from flora.config import Config
-from flora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
+from ffalora.config import Config
+from ffalora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
 
 # Computes the final accuracy of a run by averaging the last `tail` rounds of its accuracy history.
 def _final_accuracy(result: dict, tail: int) -> float:
