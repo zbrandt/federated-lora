@@ -26,8 +26,9 @@ def parse_args():
 	parser.add_argument('--epsilon', type=float, default=3.0)
 	parser.add_argument('--lr-a', type=float, default=0.25)
 	parser.add_argument('--lr-b', type=float, default=0.25)
+	parser.add_argument('--lr-head', type=float, default=0.15)
 	parser.add_argument('--seed', type=int, default=42)
-	parser.add_argument('--output-dir', type=str, default='outputs/')
+	parser.add_argument('--output-dir', type=str, default='results/')
 
 	return parser.parse_args()
 
