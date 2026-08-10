@@ -9,13 +9,12 @@ from federated_lora.server import Server
 class RoLoRA:
 	name = 'rolora'
 
-	def prepare_model(
-		self,
-		model: Module,
-	) -> None:
+	def set_target_modules(self, model: Module) -> None:
 		for name, parameter in model.named_parameters():
 			if 'lora_' in name or 'classifier' in name:
 				parameter.requires_grad = True
+			else:
+				parameter.requires_grad = False
 
 	def local_update(
 		self, 

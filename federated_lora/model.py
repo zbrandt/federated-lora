@@ -5,6 +5,7 @@ from peft import LoraConfig, PeftModel, get_peft_model
 import torch.nn as nn
 from transformers import AutoModelForImageClassification
 
+from federated_lora.method import Method
 
 def create_peft_model(
 	name: str,
@@ -13,11 +14,12 @@ def create_peft_model(
 	lora_alpha: int,
 	target_modules: tuple[str, ...],
 	lora_dropout: float,
+	method: Method,
 	device: torch.device,
 ) -> PeftModel:
 	"""
-	Create a trainable PeftModel from the base model and the parameters for how
-	to configure the model for training with LoRA.
+	Create a trainable PeftModel from the base model and the parameters for 
+	training with LoRA.
 
 	Parameters
 	----------
@@ -33,6 +35,8 @@ def create_peft_model(
 		The alpha parameter for LoRA scaling.
 	lora_dropout : int
 		The dropout probability for LoRA layers.
+	method : Method
+		A federated fine-tuning method.
 	device : torch.device
 		The selected device type ("cpu" or "cuda").
 
@@ -54,7 +58,11 @@ def create_peft_model(
 		modules_to_save=['classifier'],
 	)
 
-	return get_peft_model(base, peft_config)
+	model = get_peft_model(base, peft_config)
+
+	method.set_target_modules(model) 
+
+	return model
 
 # TODO: figure out how to unrwap the standard nn.Module wrapped by the privacy engine
 def unwrap(model: nn.Module) -> nn.Module:
@@ -76,8 +84,7 @@ def get_trainable_parameters(model: nn.Module) -> set[str]:
 
 def group_trainable_parameters(model: nn.Module) -> tuple[list, list, list]:
 	""" 
-	Group trainable parameters from LoRA matrices A and B and the classifier 
-	head.
+	Group trainable parameters from LoRA matrices A & B and the classifier head.
 	"""
 	params_A, params_B, params_head = [], [], []
 	for name, param in model.named_parameters():
@@ -123,8 +130,3 @@ def load_trainable_state(
 	"""
 	target = unwrap(model)
 	target.load_state_dict(state, strict=False)
-	# _missing, unexpected = target.load_state_dict(state, strict=False)
-	# if unexpected:
-	# 	raise KeyError(
-	# 		f'unexpected keys when loading trainable state: {sorted(unexpected)}'
-	# 	)

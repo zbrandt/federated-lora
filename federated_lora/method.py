@@ -3,33 +3,19 @@ from __future__ import annotations
 from typing import Protocol
 
 import torch
-from torch.nn import Module
+import torch.nn as nn
 
-# TODO: rewrite docstrings
+
 class Method(Protocol):
 	"""
-	A federated LoRA training method.
-
-	Standard methods implement the "thin" contract below: ``Client.update`` runs
-	the shared DP-SGD loop and calls ``local_update`` after each backward pass to
-	mask or adjust the per-sample gradients in place, before the DP optimizer
-	step. A method that must own its full local loop -- e.g. LaLoRA, whose
-	gradient smoothing runs *after* Opacus clips and noises -- instead exposes a
-	``run_local`` method and is detected via ``hasattr(method, 'run_local')``, so
-	no ``bespoke`` flag is needed.
+	A federated fine-tuning method.
 	"""
 
 	name: str
 
-	def prepare_model(self, model: Module) -> None:
+	def set_target_modules(self, model: nn.Module) -> None:
 		"""
-		Select which parameters this method trains by setting ``requires_grad``,
-		before the optimizer and Opacus are built.
-
-		Called once by ``experiment.build`` on the global model; the flags are
-		inherited by the per-client copies. Most methods train both LoRA factors
-		and the classification head; FFA-LoRA freezes A here so it stays out of
-		the DP budget entirely.
+		Configure which modules of the model to adapt.
 
 		Parameters
 		----------
@@ -38,7 +24,8 @@ class Method(Protocol):
 		"""
 		...
 
-	def local_update(self, model: Module, round: int) -> None:
+	# TODO: rewrite docstring
+	def local_update(self, model: nn.Module, round: int) -> None:
 		"""
 		Adjust the per-sample gradients in place, before the optimizer step.
 
@@ -56,6 +43,7 @@ class Method(Protocol):
 		"""
 		...
 
+	# TODO: rewrite docstring
 	def aggregate(
 		self, uploads: list[dict[str, torch.Tensor]], round: int
 	) -> dict[str, torch.Tensor]:
