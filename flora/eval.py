@@ -1,3 +1,9 @@
+"""
+This file contains functions for evaluating the performance of a model on a given dataset.
+Computes average loss and accuracy over the dataset using a specified model, tokenizer, and configuration. 
+The evaluation is performed in batches, with the model set to evaluation mode and gradients disabled for efficiency.
+"""
+
 from __future__ import annotations
 
 import torch
@@ -5,9 +11,15 @@ from datasets import Dataset
 from torch.utils.data import DataLoader
 from transformers import DataCollatorWithPadding, PreTrainedModel, PreTrainedTokenizerBase
 
-from ffalora.config import Config
+from flora.config import Config
 
-
+# Evaluates the accuracy and average loss of a model on a given dataset.
+# parameters: model: PreTrainedModel - The model to evaluate. 
+# dataset: Dataset - The dataset to evaluate on. 
+# tokenizer: PreTrainedTokenizerBase - The tokenizer used for padding and batching. 
+# config: Config - The hyperparameter configuration from config.py. 
+# device: torch.device - The device to run the evaluation on (CPU or GPU).
+# returns: tuple[float, float] - A tuple containing the average loss and accuracy over the dataset.
 def evaluate_accuracy(
 	model: PreTrainedModel,
 	dataset: Dataset,

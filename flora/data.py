@@ -1,10 +1,16 @@
+"""
+This file contains functions for loading and partitioning datasets for federated learning experiments. 
+It includes functionality to tokenize datasets using a specified tokenizer, partition the training data among clients using either a non-iid Dirichlet distribution or an iid strategy, and return the resulting client-specific training shards along with a shared evaluation dataset. 
+The partitioning strategy and other parameters are configurable via the provided Config dataclass.
+"""
+
 from __future__ import annotations
 
 import numpy as np
 from datasets import Dataset, load_dataset
 from transformers import PreTrainedTokenizerBase
 
-from ffalora.config import Config
+from flora.config import Config
 
 
 def _tokenize(dataset: Dataset, tokenizer: PreTrainedTokenizerBase, config: Config) -> Dataset:
@@ -16,14 +22,12 @@ def _tokenize(dataset: Dataset, tokenizer: PreTrainedTokenizerBase, config: Conf
 		out["labels"] = batch["label"]
 		return out
 
-	# keep_in_memory avoids writing a fresh Arrow cache file to disk for
-	# every shard of every run -- since each sweep point uses a different
-	# seed/num_clients, the cache fingerprint changes every time and nothing
-	# gets reused, so leaving this on disk just accumulates until the quota
-	# is exceeded (as happened running sweep.py).
+	# Tokenize the dataset using the provided tokenizer, removing original columns and keeping it in memory for faster access.
 	return dataset.map(encode, batched=True, remove_columns=dataset.column_names, keep_in_memory=True)
 
-
+# Partitions the training dataset into shards for each client using a Dirichlet distribution to create non-iid splits. 
+#Each class's samples are distributed among clients according to proportions drawn from a Dirichlet distribution with parameter alpha. 
+#The resulting indices for each client are shuffled to ensure randomness.
 def _partition_dirichlet(labels: list[int], num_clients: int, alpha: float, rng: np.random.Generator) -> list[list[int]]:
     labels = np.asarray(labels)
     client_indices: list[list[int]] = [[] for _ in range(num_clients)]
@@ -38,7 +42,10 @@ def _partition_dirichlet(labels: list[int], num_clients: int, alpha: float, rng:
         rng.shuffle(shard)
     return client_indices
 
-
+# Loads the specified dataset and partitions it into training shards for each client and a shared evaluation dataset.
+# The training dataset is partitioned according to the specified strategy (iid or non-iid Dirichlet) and tokenized using the provided tokenizer. The evaluation dataset is also tokenized.
+# parameters: config: Config - The hyperparameter configuration from config.py. tokenizer: PreTrainedTokenizerBase - The tokenizer to use for tokenizing the datasets.
+# returns: tuple[list[Dataset], Dataset] - A list of tokenized training shards for each client and a tokenized evaluation dataset.
 def load_datasets(config: Config, tokenizer: PreTrainedTokenizerBase) -> tuple[list[Dataset], Dataset]:
 	train = load_dataset(config.dataset_name, config.dataset_task, split=config.train_split)
 	eval = load_dataset(config.dataset_name, config.dataset_task, split=config.eval_split)

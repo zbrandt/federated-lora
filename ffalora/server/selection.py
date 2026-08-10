@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import torch
-from flora.client import Client
+from ffalora.client import Client
 
 def select_clients(clients: list[Client], sample_rate: float, generator: torch.Generator) -> list[Client]:
     """

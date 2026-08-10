@@ -1,3 +1,7 @@
+"""
+Entry point for the program. Takes care of building and running the FLoRA server and clients, as well as saving the results to a specified or default directory.. 
+"""
+
 from __future__ import annotations
 
 import json
@@ -7,13 +11,13 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, DataCollatorWithPadding
 
-from ffalora.config import Config
-from ffalora.client import Client
-from ffalora.data import load_datasets
-from ffalora.lora_layer import inject_heterogeneous_lora
-from ffalora.server import Server
+from flora.config import Config
+from flora.client import Client
+from flora.data import load_datasets
+from flora.lora_layer import inject_heterogeneous_lora
+from flora.server import Server
 
-
+# verifies that each client rank is in the correct range and exists
 def _resolve_client_ranks(config: Config) -> list[int]:
     if config.client_ranks is None:
         return [config.lora_rank] * config.num_clients
@@ -27,7 +31,7 @@ def _resolve_client_ranks(config: Config) -> list[int]:
             raise ValueError(f"client rank {rank} must be in [1, {config.lora_rank}] (lora_rank is r_max)")
     return list(config.client_ranks)
 
-
+# verifies the same thing but for epsilon
 def _resolve_client_epsilons(config: Config) -> list[float | None]:
     if config.client_epsilons is None:
         return [None] * config.num_clients
@@ -38,26 +42,12 @@ def _resolve_client_epsilons(config: Config) -> list[float | None]:
         )
     return list(config.client_epsilons)
 
-
+# builds the FloRA server with device, random number generator, tokenizer, train sharding,
+# evaluation dataset, base model, and FFA-LoRA adapter injection
+# Instantiates the clients with their local datasets and, per client, its resolved LoRA rank and DP target epsilon.
+# parameters: config: Config - The hyperparameter configuration from config.py.
+# returns: Server - An instance of the Server class from server.py. 
 def build(config: Config) -> Server:
-    """
-    Build the FFA-LoRA server.
-
-    Builds the server with device, random number generator, tokenizer, train
-    sharding, evaluation dataset, base model, and FFA-LoRA adapter injection
-    (see lora_layer.py). Instantiates the clients with their local datasets
-    and, per client, its resolved LoRA rank and DP target epsilon.
-
-    Parameters
-    ----------
-    config : Config
-        The hyperparameter configuration from config.py.
-
-    Returns
-    -------
-    Server
-        An instance of the Server class from server.py.
-    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     generator = torch.Generator().manual_seed(config.seed)
@@ -81,27 +71,11 @@ def build(config: Config) -> Server:
 
     return Server(config, model, clients, eval_dataset, tokenizer, device, generator)
 
-
+# runs the FLoRA method, gets confirmation of the hyperparameter configuration from argument parsers, instantiates and runs the server from the configuration, saves results to specified or default result directory indexed by method name (label only), GLUE benchmark task, and seed.
+# saves the results to specific or default result directory
+# parameters: argv: list[str] | None - List of arguments from the user.
+# returns: dict - result dictionary of configured hyperparameters as well as training and evaluation history. 
 def run(argv: list[str] | None = None) -> dict:
-    """
-    Run the FFA-LoRA method.
-
-    Get the configuration of the hyperparameters from argument parsers,
-    instantiate and run the server from the configuration. Saves results to
-    specified or default result directory indexed by method name (label only),
-    GLUE benchmark task, and seed.
-
-    Parameters
-    ----------
-    argv : list[str] | None
-        List of arguments from the user.
-
-    Returns
-    -------
-    dict
-        result dictionary of configured hyperparameters as well as training and
-        evaluation history.
-    """
     config = Config.from_argv(argv)
     server = build(config)
     history = [asdict(metric) for metric in server.run()]
@@ -114,5 +88,5 @@ def run(argv: list[str] | None = None) -> dict:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(f"[ffalora] wrote {path}", flush=True)
+    print(f"[flora] wrote {path}", flush=True)
     return result

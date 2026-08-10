@@ -34,8 +34,8 @@ from pathlib import Path
 
 import numpy as np
 
-from flora.config import Config
-from flora.rank_rule import GLUE_TRAIN_SIZES, noise_multiplier
+from ffalora.config import Config
+from ffalora.rank_rule import GLUE_TRAIN_SIZES, noise_multiplier
 from validate_rank_rule import _final_accuracy, load_grid
 
 

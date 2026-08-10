@@ -43,11 +43,11 @@ from __future__ import annotations
 
 import math
 
-from flora.config import Config
+from ffalora.config import Config
 
 # Mean of the last 5 rounds, seeds 42-46, no DP.
 # results/sweep/rank_sweep_r{r}_epsnone_seed*.json
-ACC_NODP_BY_RANK: dict[int, float] = {2: 0.8308, 4: 0.8754, 6: 0.8589, 8: 0.8529}
+ACC_NODP_BY_RANK: dict[int, float] = {2: 0.8308, 4: 0.8754, 6: 0.8589, 8: 0.8529, 16: 0.9278, 32: 0.9271}
 
 # Calibration anchor: mean of the last 5 rounds, seeds 42-44.
 # results/sweep/dp_sweep_rank8_eps1_seed*.json

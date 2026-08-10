@@ -1,17 +1,4 @@
-"""Plot accuracy-by-round curves from la_lora run results.
-
-Each run writes a JSON file (see ``la_lora.run``) containing its ``config`` and a
-per-round ``history``. This script reads a set of those files, groups them by
-GLUE task and by method, averages across seeds, and writes one
-accuracy-by-round figure per task with the methods overlaid and a mean +/- std
-band shaded across seeds.
-
-Usage::
-
-    python plot_results.py                     # reads results/, writes figures/
-    python plot_results.py results --output-dir figures
-    python plot_results.py results/lalora_sst2_seed42.json ...
-"""
+"""Plot accuracy-by-round curves from la_lora run results."""
 
 from __future__ import annotations
 

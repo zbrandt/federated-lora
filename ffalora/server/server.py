@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from flora.config import Config
-from flora.eval import evaluate_accuracy
-from flora.server.selection import select_clients
-from flora.server.broadcast import broadcast
-from flora.server.aggregate import aggregate
-from flora.server.computation import client_computation
+from ffalora.config import Config
+from ffalora.eval import evaluate_accuracy
+from ffalora.server.selection import select_clients
+from ffalora.server.broadcast import broadcast
+from ffalora.server.aggregate import aggregate
+from ffalora.server.computation import client_computation
 
 
 @dataclass(slots=True)

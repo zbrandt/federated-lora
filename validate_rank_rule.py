@@ -1,5 +1,5 @@
 """
-Check flora.rank_rule.recommended_rank's predictions against the actual
+Check ffalora.rank_rule.recommended_rank's predictions against the actual
 accuracy-maximizing rank observed in the grid sweep
 (results/sweep/grid_sweep_*.json) -- the ground truth the rule was only
 ever provisionally calibrated against a single anchor point plus one
@@ -21,8 +21,8 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from flora.config import Config
-from flora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
+from ffalora.config import Config
+from ffalora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
 
 
 def _final_accuracy(result: dict, tail: int) -> float:

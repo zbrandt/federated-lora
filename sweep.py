@@ -1,5 +1,5 @@
 """
-Two controlled ablations over FFA-LoRA (see flora/lora_layer.py), each
+Two controlled ablations over FFA-LoRA (see ffalora/lora_layer.py), each
 varying exactly one axis at a time so any accuracy trend can be attributed
 to that axis alone:
 
@@ -16,7 +16,7 @@ to that axis alone:
    shrinks, since noise added to B scales into the reconstructed update
    alongside signal that a wider rank can't outrun) wouldn't show up there.
 
-Every run is a full flora.build(config) + server.run(), so this is exactly
+Every run is a full ffalora.build(config) + server.run(), so this is exactly
 as expensive as running main.py that many times -- there is no shortcut.
 Run with --smoke first to confirm plumbing before committing to a real
 (likely multi-hour, and for `grid`, likely multi-day) sweep.
@@ -63,9 +63,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from flora import build
-from flora.config import GLUE_TASKS, Config
-from flora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
+from ffalora import build
+from ffalora.config import GLUE_TASKS, Config
+from ffalora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
 
 
 def _parse_epsilon(token: str) -> float | None:
@@ -125,7 +125,7 @@ def run_rank_sweep(args: argparse.Namespace) -> list[tuple[int, int, dict]]:
                 lora_rank=rank,
                 client_ranks=None,
                 client_epsilons=epsilons,
-                method=f"flora-rank{rank}-eps{eps_tag}",
+                method=f"ffalora-rank{rank}-eps{eps_tag}",
             )
             tag = f"rank_sweep_r{rank}_eps{eps_tag}_rounds{config.rounds}_nc{config.num_clients}_seed{seed}"
             result = _run_one(config, tag, Path(args.results_dir), args.force)
@@ -135,7 +135,7 @@ def run_rank_sweep(args: argparse.Namespace) -> list[tuple[int, int, dict]]:
 
 
 def run_dp_sweep(args: argparse.Namespace) -> list[tuple[float | None, int, dict]]:
-    """Rank held constant (or, with --auto-rank, chosen per epsilon by flora.rank_rule); the
+    """Rank held constant (or, with --auto-rank, chosen per epsilon by ffalora.rank_rule); the
     shared per-client DP epsilon varied between runs."""
     runs: list[tuple[float | None, int, dict]] = []
 
@@ -159,7 +159,7 @@ def run_dp_sweep(args: argparse.Namespace) -> list[tuple[float | None, int, dict
                 lora_rank=rank,
                 client_ranks=None,
                 client_epsilons=epsilons,
-                method=f"flora-rank{rank}-eps{eps_tag}",
+                method=f"ffalora-rank{rank}-eps{eps_tag}",
             )
             rank_tag = f"auto{rank}" if auto_rank else str(rank)
             tag = f"dp_sweep_rank{rank_tag}_eps{eps_tag}_rounds{config.rounds}_nc{config.num_clients}_seed{seed}"
@@ -200,7 +200,7 @@ def run_grid_sweep(args: argparse.Namespace) -> list[tuple[int, float | None, in
                     lora_rank=rank,
                     client_ranks=None,
                     client_epsilons=epsilons,
-                    method=f"flora-rank{rank}-eps{eps_tag}",
+                    method=f"ffalora-rank{rank}-eps{eps_tag}",
                 )
                 tag = (
                     f"grid_sweep_r{rank}_eps{eps_tag}"
@@ -348,7 +348,7 @@ def main() -> None:
                        help="ignored when --auto-rank is set")
     dp_p.add_argument("--epsilons", type=_parse_epsilon, nargs="+", default=[None, 1.0, 2.0, 4.0, 8.0])
     dp_p.add_argument("--auto-rank", action="store_true",
-                       help="pick lora_rank per epsilon via flora.rank_rule.recommended_rank instead of "
+                       help="pick lora_rank per epsilon via ffalora.rank_rule.recommended_rank instead of "
                             "using a fixed --rank for every point")
     dp_p.add_argument("--candidate-ranks", type=int, nargs="+", default=[2, 4, 6, 8],
                        help="ranks recommended_rank chooses among when --auto-rank is set")

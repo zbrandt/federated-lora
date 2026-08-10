@@ -11,7 +11,7 @@ epsilon delays the escape -- sometimes past round 100 entirely. That
 escape-timing spread, not simple noise-around-a-mean, is what widens the
 trend plot's error bars at low epsilon.
 
-Reads directly from results/sweep/*.json -- no flora/torch import needed.
+Reads directly from results/sweep/*.json -- no ffalora/torch import needed.
 """
 
 from __future__ import annotations

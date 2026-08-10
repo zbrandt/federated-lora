@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 from transformers import PreTrainedModel
 
-from flora.client import Client
+from ffalora.client import Client
 
 
 def client_computation(
