@@ -13,7 +13,7 @@ from federated_lora.aggregate import uniform_mean
 
 
 class LaLoRA:
-	name = 'lalora' # TODO: rename to la_lora
+	name = 'lalora'  # TODO: rename to la_lora
 
 	# TODO
 	def smooth(self, grad: torch.Tensor, mode: str) -> torch.Tensor:

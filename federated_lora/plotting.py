@@ -37,8 +37,16 @@ import numpy as np
 
 # Metric label -> candidate history keys, in priority order.
 METRICS = {
-	'top1': ('top1_acc', 'accuracy', 'acc', 'test_accuracy', 'eval_accuracy',
-	         'test_acc', 'acc@1', 'top_1_acc'),
+	'top1': (
+		'top1_acc',
+		'accuracy',
+		'acc',
+		'test_accuracy',
+		'eval_accuracy',
+		'test_acc',
+		'acc@1',
+		'top_1_acc',
+	),
 	'top5': ('top5_acc', 'top_5_acc', 'acc@5'),
 }
 ROUND_KEYS = ('round_index', 'round', 'round_idx', 'step', 'r')
@@ -66,7 +74,9 @@ def load_run(path: Path) -> dict:
 		rounds.append(int(_first(entry, ROUND_KEYS, i + 1)))
 		for name, keys in METRICS.items():
 			val = _first(entry, keys)
-			series[name].append(float(val) if val is not None else float('nan'))
+			series[name].append(
+				float(val) if val is not None else float('nan')
+			)
 
 	if not rounds:
 		keys = sorted(history[0].keys()) if history else 'empty history'
@@ -111,7 +121,7 @@ def plot(
 	for p in paths:
 		try:
 			runs.append(load_run(p))
-		except Exception as ex:  # noqa: BLE001 - report and continue
+		except Exception as ex:
 			skipped.append((p.name, str(ex)))
 
 	for name, why in skipped:
@@ -150,7 +160,12 @@ def plot(
 	written = []
 	for task, method_runs in sorted(grouped.items()):
 		metrics_here = sorted(
-			{m for rs in method_runs.values() for r in rs for m in r['series']},
+			{
+				m
+				for rs in method_runs.values()
+				for r in rs
+				for m in r['series']
+			},
 			key=lambda m: list(METRICS).index(m),
 		)
 		for metric in metrics_here:
@@ -164,14 +179,21 @@ def plot(
 				stacked = np.asarray([r['series'][metric][:n] for r in rs])
 				mean, std = stacked.mean(axis=0), stacked.std(axis=0)
 				plt.plot(
-					xs, mean, marker='o', markersize=3, linewidth=2,
+					xs,
+					mean,
+					marker='o',
+					markersize=3,
+					linewidth=2,
 					color=colors[method],
 					label=f'{method} (n={len(rs)} seed'
-					      f'{"s" if len(rs) != 1 else ""})',
+					f'{"s" if len(rs) != 1 else ""})',
 				)
 				if np.any(std > 0):
 					plt.fill_between(
-						xs, mean - std, mean + std, alpha=0.15,
+						xs,
+						mean - std,
+						mean + std,
+						alpha=0.15,
 						color=colors[method],
 					)
 			label = metric_labels.get(metric, metric)
