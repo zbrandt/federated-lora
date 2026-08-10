@@ -1,17 +1,5 @@
 """
-Round-by-round accuracy curves for the `dp` sweep (rank=8, epsilon in
-{none,1,2,4,8}, seeds 42/43/44) -- one panel per epsilon, one line per seed.
-
-Unlike the summary trend plot (figures/sweep/dp_trend.png, mean of the last
-5 rounds), this shows the actual training dynamics: DP-SGD starts pinned at
-the majority-class baseline (LoRA's B is zero-initialized, so round 1 is
-just the frozen backbone + a random head) and has to escape that flat region
-before it can learn. Noise competes with the escape gradient, so tighter
-epsilon delays the escape -- sometimes past round 100 entirely. That
-escape-timing spread, not simple noise-around-a-mean, is what widens the
-trend plot's error bars at low epsilon.
-
-Reads directly from results/sweep/*.json -- no ffalora/torch import needed.
+Plot the DP-SGD escape curves from the sweep results.
 """
 
 from __future__ import annotations
@@ -31,9 +19,7 @@ EPSILONS = [None, 1, 2, 4, 8]
 SEEDS = [42, 43, 44]
 BASELINE_ACCURACY = 0.5092
 
-# Validated categorical triplet (dataviz skill reference palette) -- first
-# three slots clear the all-pairs CVD/contrast floors, the right guarantee
-# for a small-multiples chart that repeats the same 3 series across panels.
+# Color palette for the three seeds, chosen to be colorblind-friendly and visually distinct.
 SEED_COLORS = {42: "#2a78d6", 43: "#eb6834", 44: "#1baf7a"}  # blue, orange, aqua
 
 MUTED = "#898781"

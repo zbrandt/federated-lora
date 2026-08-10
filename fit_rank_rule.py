@@ -1,29 +1,7 @@
 """
-Fit rank_rule.py's model -- accuracy(r, eps) ~= acc_nodp(r) - kappa * r *
-sigma(eps)**2 -- to ALL available evidence via ordinary least squares,
-instead of the single hand-picked anchor point (rank_sweep's r=8 no-DP
-baseline vs. dp_sweep's r=8/eps=1 run) rank_rule.py currently ships with.
-Combines two sources of evidence:
-
-  - the no-DP rank sweep (results/sweep/rank_sweep_r*_epsnone_seed*.json),
-    each point entering the fit with sigma=0 -- by the model's own
-    definition, accuracy there IS acc_nodp(r), no kappa term involved.
-  - the DP grid sweep (results/sweep/grid_sweep_*.json), as it lands.
-
-acc_nodp(r) gets one free parameter per rank observed; kappa is a single
-parameter shared across every rank and epsilon, fit jointly. Unlike
-rank_rule.py's current one-anchor calibration (which never improves no
-matter how much more of the grid sweep finishes, until someone manually
-edits the constants), this fit gets more reliable as more (rank, epsilon)
-cells land -- rerun it as the grid progresses.
-
-This only PRINTS the fitted constants plus per-point residuals and R^2 --
-it does not edit rank_rule.py for you. Check the residuals/R^2 before
-deciding a fit is good enough to replace ACC_NODP_BY_RANK / kappa with.
-
-Usage:
-    uv run python fit_rank_rule.py
-    uv run python fit_rank_rule.py --min-seeds 3   # include noisier partial cells
+This file contains functions for calibrating the rank of FFA-LoRA layers in a federated learning setting, particularly when differential privacy (DP) is applied.
+The goal is to select a rank that maximizes model accuracy while accounting for the noise introduced by DP.
+The calibration is based on empirical results from prior experiments, which provide a mapping from rank to expected accuracy without DP, and a method to estimate the noise multiplier for a given DP budget.
 """
 from __future__ import annotations
 
@@ -34,11 +12,11 @@ from pathlib import Path
 
 import numpy as np
 
-from ffalora.config import Config
-from ffalora.rank_rule import GLUE_TRAIN_SIZES, noise_multiplier
+from flora.config import Config
+from flora.rank_rule import GLUE_TRAIN_SIZES, noise_multiplier
 from validate_rank_rule import _final_accuracy, load_grid
 
-
+# Loads the final accuracies from the no-DP rank sweep.
 def load_rank_sweep(results_dir: Path, tail: int) -> dict[int, list[float]]:
     """{rank: [final_accuracy per seed]} from the no-DP rank sweep."""
     by_rank: dict[int, list[float]] = defaultdict(list)
@@ -48,7 +26,7 @@ def load_rank_sweep(results_dir: Path, tail: int) -> dict[int, list[float]]:
         by_rank[rank].append(_final_accuracy(result, tail))
     return by_rank
 
-
+# Loads the final accuracies from the DP grid sweep.
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tail", type=int, default=5)
@@ -83,9 +61,9 @@ def main() -> None:
               f"Lower --min-seeds or wait for more of the grid sweep to land.")
         return
 
-    # Design matrix: one indicator column per rank (acc_nodp(r)), plus one
-    # shared kappa column. accuracy = acc_nodp(r) - kappa * r * sigma**2, so
-    # kappa's column carries the coefficient's sign: -(r * sigma**2).
+    # Fit a linear model to the (rank, sigma, accuracy) points. The model is:
+    #   accuracy(rank, sigma) = acc_nodp(rank) - kappa * rank * sigma^2
+    # where acc_nodp(rank) is the expected accuracy without DP for that rank, and kappa is a shared coefficient that captures the accuracy loss due to DP noise.
     X = np.zeros((len(points), len(ranks) + 1))
     y = np.zeros(len(points))
     for i, (rank, sigma, acc) in enumerate(points):
