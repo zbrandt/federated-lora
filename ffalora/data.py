@@ -1,3 +1,8 @@
+"""
+Loads a GLUE dataset, splits the training set across clients (evenly, or
+unevenly to simulate a realistic non-iid setup), and tokenizes everything.
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -7,6 +12,7 @@ from transformers import PreTrainedTokenizerBase
 from ffalora.config import Config
 
 
+# Tokenize a dataset for this task, without caching it to disk.
 def _tokenize(dataset: Dataset, tokenizer: PreTrainedTokenizerBase, config: Config) -> Dataset:
 	field_a, field_b = config.text_fields
 
@@ -16,14 +22,12 @@ def _tokenize(dataset: Dataset, tokenizer: PreTrainedTokenizerBase, config: Conf
 		out["labels"] = batch["label"]
 		return out
 
-	# keep_in_memory avoids writing a fresh Arrow cache file to disk for
-	# every shard of every run -- since each sweep point uses a different
-	# seed/num_clients, the cache fingerprint changes every time and nothing
-	# gets reused, so leaving this on disk just accumulates until the quota
-	# is exceeded (as happened running sweep.py).
+	# keep_in_memory=True: every run uses a different seed/client count, so a disk
+	# cache would never get reused -- it would just keep growing until the quota fills.
 	return dataset.map(encode, batched=True, remove_columns=dataset.column_names, keep_in_memory=True)
 
 
+# Split examples across clients unevenly (non-iid), using a Dirichlet distribution per class.
 def _partition_dirichlet(labels: list[int], num_clients: int, alpha: float, rng: np.random.Generator) -> list[list[int]]:
     labels = np.asarray(labels)
     client_indices: list[list[int]] = [[] for _ in range(num_clients)]
@@ -39,6 +43,7 @@ def _partition_dirichlet(labels: list[int], num_clients: int, alpha: float, rng:
     return client_indices
 
 
+# Load and tokenize the train/eval splits, then split the training data across clients.
 def load_datasets(config: Config, tokenizer: PreTrainedTokenizerBase) -> tuple[list[Dataset], Dataset]:
 	train = load_dataset(config.dataset_name, config.dataset_task, split=config.train_split)
 	eval = load_dataset(config.dataset_name, config.dataset_task, split=config.eval_split)

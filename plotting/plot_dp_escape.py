@@ -1,7 +1,3 @@
-"""
-Plot the DP-SGD escape curves from the sweep results.
-"""
-
 from __future__ import annotations
 
 import json
@@ -19,8 +15,7 @@ EPSILONS = [None, 1, 2, 4, 8]
 SEEDS = [42, 43, 44]
 BASELINE_ACCURACY = 0.5092
 
-# Color palette for the three seeds, chosen to be colorblind-friendly and visually distinct.
-SEED_COLORS = {42: "#2a78d6", 43: "#eb6834", 44: "#1baf7a"}  # blue, orange, aqua
+SEED_COLORS = {42: "#2a78d6", 43: "#eb6834", 44: "#1baf7a"}
 
 MUTED = "#898781"
 GRID = "#e1e0d9"

@@ -1,5 +1,7 @@
 """
-Creates and exports the client class, which is responsible for performing local updates on a given dataset shard.
+Each Client trains its own slice of data for one round.
+It only ever trains the small LoRA B matrix and the classifier head, optionally
+adding DP noise (via Opacus) so no single training example can be traced back.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from ffalora.config import Config
 from ffalora.lora_layer import HeterogeneousDPLoRALayer
 
 
+# Everything a client hands back to the server after one round of training.
 @dataclass(slots=True)
 class ClientResult:
 	state_dict: dict[str, torch.Tensor]
@@ -29,6 +32,7 @@ class ClientResult:
 
 
 class Client:
+	# Store this client's data, device, and settings; DP state is filled in lazily on first use.
 	def __init__(
 			self,
 			client_id: int,
@@ -49,9 +53,7 @@ class Client:
 		self._privacy_engine = None             # lazily created once, reused every round so epsilon composes across rounds
 		self._sigma = None                      # noise multiplier derived from target_epsilon; computed once, cached
 
-	# performs a local update under FFA-LoRA. Only B matrix and the classifier head are trained. A is frozen here. 
-	# parameters: model: PreTrainedModel - Model with HeterogeneousDPLoRALayer adapters injected. adapter_state: dict[str, torch.Tensor] - The global B (per layer) and classifier head state to train from this round.
-	# returns: ClientResult - The client's updated state plus loss/example/privacy bookkeeping.
+	# Train this client's copy of the model for one round, with or without DP, and package up the result.
 	def local_update(self, model: PreTrainedModel, adapter_state: dict[str, torch.Tensor]) -> ClientResult:
 		model.load_state_dict(adapter_state, strict=False)
 		model.train()
@@ -86,13 +88,8 @@ class Client:
 			total_loss, steps_taken = self._local_update_plain(model, optimizer, train_dataloader)
 			epsilon_spent = None
 
-		# See lora_layer.py's docstring: zero-padding the forward pass alone
-		# is NOT sufficient to keep inactive columns (rank r_i..r_max) at
-		# zero once DP noise is involved -- Opacus's noise is added to the
-		# whole gradient tensor unconditionally, regardless of whether the
-		# true gradient there happens to be zero. So those columns are
-		# explicitly reset here, on every path (DP or not, for consistency),
-		# before the state is extracted for upload.
+		# DP noise gets added to every column of B, even the inactive ones (rank r_i..r_max),
+		# so they have to be zeroed out again here before the update is sent to the server.
 		with torch.no_grad():
 			for layer in lora_layers:
 				if self.rank < layer.r_max:
@@ -113,7 +110,7 @@ class Client:
 			epsilon_spent=epsilon_spent,
 		)
 
-	# performs a local update without differential privacy
+	# Run ordinary (non-private) training for this client's local steps or epochs.
 	def _local_update_plain(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, int]:
 		total_loss = 0.0
 		steps_taken = 0
@@ -144,9 +141,7 @@ class Client:
 
 		return total_loss, steps_taken
 
-	# performs a local update under Opacus per-example DP-SGD. Only B matrix and the classifier head are trained. A is frozen here.
-	# parameters: model: PreTrainedModel - Model with HeterogeneousDPLoRALayer adapters injected. optimizer: Optimizer - The optimizer to use for the update. train_dataloader: DataLoader - The dataloader for the client's local dataset shard.
-	# returns: tuple[float, float, int] - The total loss, the epsilon
+	# Run training with DP-SGD (via Opacus): clip and noise every gradient step so no example leaks.
 	def _local_update_dp(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, float, int]:
 		from opacus import PrivacyEngine
 		from opacus.accountants.utils import get_noise_multiplier
@@ -158,10 +153,8 @@ class Client:
 
 		if self._sigma is None:
 			if self.config.local_epochs is not None:
-				# Epoch mode: "steps per epoch" depends on THIS client's own
-				# shard size, which varies under non-iid partitioning --
-				# unlike local_steps, this is not the same fixed number for
-				# every client.
+				# Shard sizes differ per client under non-iid partitioning, so
+				# "steps per epoch" has to be computed per client, not assumed fixed.
 				steps_per_epoch = math.ceil(len(self.dataset) / self.config.batch_size)
 				local_steps_equivalent = self.config.local_epochs * steps_per_epoch
 			else:
@@ -184,7 +177,8 @@ class Client:
 
 		total_loss = 0.0
 		steps_taken = 0
-		# Helper function to run a single batch, updating total_loss and steps_taken. This is used in both epoch and step modes.
+
+		# Run one training batch and add its loss to the running total.
 		def _run_batch(batch: dict) -> None:
 			nonlocal total_loss, steps_taken
 			if batch["input_ids"].shape[0] == 0:
@@ -200,8 +194,6 @@ class Client:
 			steps_taken += 1
 
 		if self.config.local_epochs is not None:
-			# Epoch mode: run for a fixed number of epochs over the local dataset shard. This is the default and recommended mode.
-			# Note that the number of steps taken will vary per client under non-iid partitioning, since each client's shard size may differ.
 			for _ in range(self.config.local_epochs):
 				if self.config.max_physical_batch_size is not None:
 					from opacus.utils.batch_memory_manager import BatchMemoryManager

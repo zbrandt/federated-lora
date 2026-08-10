@@ -1,3 +1,9 @@
+"""
+Entry points for running one FFA-LoRA experiment.
+`build()` assembles the model, clients, and server from a Config.
+`run()` builds everything, runs it, and saves the results to a JSON file.
+"""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +20,7 @@ from ffalora.lora_layer import inject_heterogeneous_lora
 from ffalora.server import Server
 
 
+# Give every client a LoRA rank: use config.client_ranks if set, otherwise everyone gets the same rank.
 def _resolve_client_ranks(config: Config) -> list[int]:
     if config.client_ranks is None:
         return [config.lora_rank] * config.num_clients
@@ -28,6 +35,7 @@ def _resolve_client_ranks(config: Config) -> list[int]:
     return list(config.client_ranks)
 
 
+# Give every client a DP epsilon: use config.client_epsilons if set, otherwise no client uses DP.
 def _resolve_client_epsilons(config: Config) -> list[float | None]:
     if config.client_epsilons is None:
         return [None] * config.num_clients
@@ -39,25 +47,8 @@ def _resolve_client_epsilons(config: Config) -> list[float | None]:
     return list(config.client_epsilons)
 
 
+# Assemble the model, tokenizer, data, clients, and server needed to run one experiment.
 def build(config: Config) -> Server:
-    """
-    Build the FFA-LoRA server.
-
-    Builds the server with device, random number generator, tokenizer, train
-    sharding, evaluation dataset, base model, and FFA-LoRA adapter injection
-    (see lora_layer.py). Instantiates the clients with their local datasets
-    and, per client, its resolved LoRA rank and DP target epsilon.
-
-    Parameters
-    ----------
-    config : Config
-        The hyperparameter configuration from config.py.
-
-    Returns
-    -------
-    Server
-        An instance of the Server class from server.py.
-    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     generator = torch.Generator().manual_seed(config.seed)
@@ -82,26 +73,8 @@ def build(config: Config) -> Server:
     return Server(config, model, clients, eval_dataset, tokenizer, device, generator)
 
 
+# Parse CLI args, run one full experiment, and write the results to disk.
 def run(argv: list[str] | None = None) -> dict:
-    """
-    Run the FFA-LoRA method.
-
-    Get the configuration of the hyperparameters from argument parsers,
-    instantiate and run the server from the configuration. Saves results to
-    specified or default result directory indexed by method name (label only),
-    GLUE benchmark task, and seed.
-
-    Parameters
-    ----------
-    argv : list[str] | None
-        List of arguments from the user.
-
-    Returns
-    -------
-    dict
-        result dictionary of configured hyperparameters as well as training and
-        evaluation history.
-    """
     config = Config.from_argv(argv)
     server = build(config)
     history = [asdict(metric) for metric in server.run()]

@@ -1,11 +1,10 @@
-"""
-Plot final accuracy vs LoRA rank with no DP applied, from the rank sweep
-(results/sweep/rank_sweep_r*_epsnone_seed*.json).
-"""
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import matplotlib
 import numpy as np
@@ -25,7 +24,7 @@ COLOR = "#2a78d6"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser()
     parser.add_argument("--tail", type=int, default=5)
     parser.add_argument("--results-dir", default="results/sweep")
     parser.add_argument("--output", default=str(OUTPUT_PATH))

@@ -1,3 +1,9 @@
+"""
+The Server runs the federated learning loop: each round it picks some
+clients, sends them the current model, collects their local updates,
+averages them together, and evaluates the result.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +16,7 @@ from ffalora.server.aggregate import aggregate
 from ffalora.server.computation import client_computation
 
 
+# Everything logged about one round of training.
 @dataclass(slots=True)
 class RoundMetrics:
 	round_index: int
@@ -22,6 +29,7 @@ class RoundMetrics:
 
 
 class Server:
+	# Store the model, clients, and starting state for a run.
 	def __init__(self, config: Config, model, clients, eval_dataset, tokenizer, device, generator) -> None:
 		self.config = config
 		self.model = model
@@ -36,6 +44,7 @@ class Server:
 			if key.endswith(".B.weight") or "classifier" in key
 		}
 
+	# Run every round: select clients, broadcast the model, train, aggregate, and evaluate.
 	def run(self) -> list[RoundMetrics]:
 		history: list[RoundMetrics] = []
 		cumulative = 0
@@ -50,11 +59,8 @@ class Server:
 			# Client computation
 			states, losses, weights, uploaded, epsilons = client_computation(selected_clients, self.model, self.global_state)
 
-			# Aggregation: FFA-LoRA's frozen, shared A makes plain weighted
-			# FedAvg on B exact (see server/aggregate.py) -- this directly
-			# becomes the next round's global state, no merge-into-base
-			# -weights/reinit step needed (unlike FLoRA's stacking design,
-			# there's no rank growth here to reset).
+			# Aggregation: FFA-LoRA's frozen, shared A makes plain weighted averaging exact
+			# (see server/aggregate.py) -- no extra merge step needed between rounds.
 			self.global_state = aggregate(states, weights)
 
 			self.model.load_state_dict(self.global_state, strict=False)

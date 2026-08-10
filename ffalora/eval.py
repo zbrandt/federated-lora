@@ -1,3 +1,4 @@
+# Evaluate a model's loss and accuracy on a dataset.
 from __future__ import annotations
 
 import torch
@@ -8,6 +9,7 @@ from transformers import DataCollatorWithPadding, PreTrainedModel, PreTrainedTok
 from ffalora.config import Config
 
 
+# Run the model over a dataset in batches and return its average loss and accuracy.
 def evaluate_accuracy(
 	model: PreTrainedModel,
 	dataset: Dataset,

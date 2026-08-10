@@ -1,13 +1,10 @@
-"""
-Plot final accuracy vs LoRA rank, one line per DP epsilon, from the rank x epsilon
-grid sweep (results/sweep/grid_sweep_r*_eps*_seed*.json). Circles the measured-best
-rank at each epsilon and flags it when ffalora.rank_rule.recommended_rank would have
-picked a different one.
-"""
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import matplotlib
 import numpy as np
@@ -29,7 +26,7 @@ EPS_COLORS = {1.0: "#2a78d6", 2.0: "#eb6834", 4.0: "#1baf7a", 8.0: "#eda100"}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser()
     parser.add_argument("--tail", type=int, default=5)
     parser.add_argument("--results-dir", default="results/sweep")
     parser.add_argument("--min-seeds", type=int, default=5)

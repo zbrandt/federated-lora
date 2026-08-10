@@ -39,7 +39,7 @@ def main() -> None:
 
         importlib.import_module(package).run(run_argv)
     elif args.command == "plot":
-        import plot_results
+        from plotting import plot_results
         plot_results.plot(args.inputs, args.output_dir)
 
 

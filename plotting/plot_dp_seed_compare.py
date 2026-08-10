@@ -1,10 +1,3 @@
-"""
-Break the aggregate error bars in figures/sweep/dp_trend.png back out into their
-individual seeds, for the fixed-rank-8 DP sweep (results/sweep/dp_sweep_rank8_eps*_seed*.json).
-DP-SGD at this rank doesn't converge gradually -- each seed either escapes the
-majority-class collapse (accuracy ~0.51) within the round budget or it doesn't, and
-which seeds escape at a given epsilon is what drives the wide error bars.
-"""
 from __future__ import annotations
 
 import argparse
