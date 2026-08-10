@@ -187,6 +187,50 @@ settings can never silently collide) and skipped on a re-run unless
 module docstring (`python sweep.py --help` / `python sweep.py <mode>
 --help`) for full usage.
 
+## Rank selection from a DP budget (`rank_rule.py`)
+
+`rank_rule.py` picks a single global `lora_rank` from a fixed, shared
+per-client epsilon — the direction treated as primary here: `client_epsilons`
+is normally an externally-imposed privacy budget, `lora_rank` is the knob
+actually under our control, so epsilon is the input and rank is the output.
+
+The model: only `B` is ever noised (see FFA-LoRA mechanics above), and `B`'s
+parameter count scales linearly with rank while Opacus's per-step noise
+variance per parameter does *not* depend on rank — so total noise energy
+injected into `B` scales linearly with rank, while the clipped per-example
+signal norm stays capped at `max_grad_norm` regardless of rank. Modeling
+final accuracy as `accuracy(r, eps) ≈ acc_nodp(r) - kappa * r * sigma(eps)²`,
+`recommended_rank(config, target_epsilon, shard_size)` returns whichever
+candidate rank maximizes that score. As shipped, `acc_nodp(r)` and `kappa`
+are calibrated from exactly one pair of runs (the no-DP rank sweep's r=8
+baseline vs. the DP sweep's r=8/eps=1 point) — a starting point, not a
+validated fit; see `fit_rank_rule.py` below.
+
+- **`sweep.py dp --auto-rank`** wires this into the `dp` ablation: instead of
+  a fixed `--rank` for every epsilon point, each point's rank is chosen by
+  `recommended_rank` and logged (`[sweep] auto-rank: eps=1 -> rank=2`).
+- **`validate_rank_rule.py`** (repo root) checks the rule's predictions
+  against the grid sweep's *actual* accuracy-maximizing rank per epsilon, as
+  that data lands — the ground truth the rule was only ever provisionally
+  calibrated against one anchor point for. Skips (rather than silently
+  scoring) any epsilon that doesn't yet have at least two ranks with enough
+  seeds to compare.
+- **`fit_rank_rule.py`** (repo root) refits `acc_nodp(r)` (one free parameter
+  per rank) and `kappa` (shared across every rank/epsilon) via ordinary least
+  squares over every no-DP rank-sweep point plus every completed grid-sweep
+  cell, instead of the single hand-picked anchor. Gets more reliable as the
+  grid sweep covers more `(rank, epsilon)` cells; prints the fitted constants
+  and per-point residuals/R² but does **not** edit `rank_rule.py` — treat its
+  output as a candidate replacement for `ACC_NODP_BY_RANK`/`kappa`, to apply
+  by hand once the R² and residuals look trustworthy.
+
+Both scripts read directly from `results/sweep/*.json`, so they work against
+a partial grid sweep — no need to wait for it to finish before checking in.
+`recommended_rank` currently only has no-DP calibration for ranks in `{2, 4,
+6, 8}` (`ACC_NODP_BY_RANK`); asking it about a rank the grid sweep tests but
+the rank sweep hasn't covered (16, 32, 64) raises rather than guessing —
+run `sweep.py rank --ranks 16 32 64` to fill that in.
+
 ## Roadmap
 
 - **LA-LoRA's smoothing filter.** The optional Gaussian low-pass filter from
