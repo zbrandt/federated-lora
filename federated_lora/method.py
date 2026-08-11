@@ -26,7 +26,7 @@ class Method(Protocol):
 		...
 
 	def step(
-		self, model: nn.Module, optimizer: DPOptimizer, round: int
+		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
 	) -> None:
 		"""
 		Perform a single optimization step to update trainable parameters.
@@ -40,6 +40,8 @@ class Method(Protocol):
 			gradients and add Gaussian noise.
 		round : int
 			The current global communication round.
+		step : int
+			The current local step.
 		"""
 		...
 

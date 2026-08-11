@@ -10,10 +10,7 @@ from transformers import PreTrainedModel
 
 from federated_lora.data import cycle
 from federated_lora.method import Method
-from federated_lora.model import (
-	clear_gradients,
-	get_trainable_state,
-)
+from federated_lora.model import get_trainable_state
 
 
 class Client:
@@ -49,7 +46,7 @@ class Client:
 		batches = cycle(self.dataloader)
 
 		total_loss = 0.0
-		for _ in range(self.steps):
+		for step in range(self.steps):
 			batch = next(batches)
 			batch = {
 				key: value.to(self.device) for key, value in batch.items()
@@ -61,7 +58,10 @@ class Client:
 			loss.backward()
 
 			method.step(
-				model=self.model, optimizer=self.optimizer, round=round
+				model=self.model,
+				optimizer=self.optimizer,
+				round=round,
+				step=step,
 			)
 
 			self.optimizer.zero_grad(set_to_none=True)

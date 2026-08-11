@@ -18,7 +18,7 @@ class FFALoRA:
 				parameter.requires_grad = False
 
 	def step(
-		self, model: nn.Module, optimizer: DPOptimizer, round: int
+		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
 	) -> None:
 		optimizer.step()
 		optimizer.zero_grad()
