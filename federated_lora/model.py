@@ -56,7 +56,6 @@ def create_peft_model(
 		target_modules=target_modules,
 		lora_dropout=lora_dropout,
 		bias='none',
-		modules_to_save=['classifier'],
 	)
 
 	model = get_peft_model(base, peft_config)
