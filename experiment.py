@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import random
 from dataclasses import asdict
@@ -8,12 +9,15 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from opacus import PrivacyEngine
+from torch.optim import SGD
 
 from federated_lora.client import Client
 from federated_lora.config import Config
 from federated_lora.data import load_datasets, prepare_dataloaders
 from federated_lora.methods import get_method
-from federated_lora.model import create_peft_model
+from federated_lora.model import create_peft_model, group_trainable_parameters
+from federated_lora.privacy import compute_noise_level
 from federated_lora.server import Server
 
 
@@ -59,10 +63,6 @@ def build(config: Config) -> Server:
 
 	method = get_method(config.method)
 
-	# select trainable parameters
-	method.prepare_model(model)
-
-	# TODO: train shards, test OR data loaders
 	data_dir = load_datasets(
 		name=config.dataset,
 		num_clients=config.num_clients,
@@ -70,23 +70,58 @@ def build(config: Config) -> Server:
 		seed=config.seed,
 	)
 
-	client_dataloaders, test_dataloader = prepare_dataloaders(
+	train_dataloaders, test_dataloader = prepare_dataloaders(
 		model=config.model,
 		data_dir=data_dir,
 		num_clients=config.num_clients,
 		batch_size=config.batch_size,
 	)
 
-	clients = [
-		Client(
-			id=i,
-			model=model,
-			dataloader=dataloader,
-			config=config,
-			device=device,
+	clients = []
+	for i, dataloader in enumerate(train_dataloaders):
+		local_model = copy.deepcopy(model).to('cpu')
+
+		params_A, params_B, params_head = group_trainable_parameters(
+			local_model
 		)
-		for i, dataloader in enumerate(client_dataloaders)
-	]
+		optimizer = SGD(
+			[
+				{'params': params_A, 'lr': config.lr_a},
+				{'params': params_B, 'lr': config.lr_b},
+				{'params': params_head, 'lr': config.lr_head},
+			],
+			weight_decay=0.0,
+		)
+
+		sigma = compute_noise_level(
+			num_examples=len(dataloader.dataset),
+			batch_size=config.batch_size,
+			global_rounds=config.global_rounds,
+			local_steps=config.local_steps,
+			target_epsilon=config.target_epsilon,
+			target_delta=config.target_delta,
+		)
+
+		privacy_engine = PrivacyEngine()
+		local_model, optimizer, dataloader = privacy_engine.make_private(
+			module=local_model,
+			optimizer=optimizer,
+			data_loader=dataloader,
+			noise_multiplier=sigma,
+			max_grad_norm=config.clip_norm,
+		)
+
+		clients.append(
+			Client(
+				id=i,
+				model=model,
+				dataloader=dataloader,
+				optimizer=optimizer,
+				privacy_engine=privacy_engine,
+				steps=config.local_steps,
+				device=device,
+			)
+		)
 
 	return Server(
 		model=model,
@@ -110,7 +145,7 @@ def run(args: list[str]) -> dict:
 		lr_a=args.lr_a,
 		lr_b=args.lr_b,
 		seed=args.seed,
-		output_dir=args.output_dir
+		output_dir=args.output_dir,
 	)
 	server = build(config)
 	history = server.run()
@@ -134,6 +169,6 @@ def run(args: list[str]) -> dict:
 	return result
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
 	args = parse_args()
 	run(args)

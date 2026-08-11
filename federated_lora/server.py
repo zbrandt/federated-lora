@@ -77,7 +77,9 @@ class Server:
 				load_trainable_state(client.model, global_state)
 
 				# compute local client uploads
-				upload, loss = client.update(round=round, method=self.method)
+				upload, loss = client.local_update(
+					round=round, method=self.method
+				)
 
 				uploads.append(upload)
 				losses.append(loss)
