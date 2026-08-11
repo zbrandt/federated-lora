@@ -4,6 +4,7 @@ from typing import Protocol
 
 import torch
 import torch.nn as nn
+from opacus.optimizers.optimizer import DPOptimizer
 
 
 class Method(Protocol):
@@ -19,48 +20,47 @@ class Method(Protocol):
 
 		Parameters
 		----------
-		model : Module
-			The freshly created PEFT model.
+		model : nn.Module
+			The PEFT model.
 		"""
 		...
 
-	# TODO: rewrite docstring
-	def local_update(self, model: nn.Module, round: int) -> None:
+	def step(
+		self, model: nn.Module, optimizer: DPOptimizer, round: int
+	) -> None:
 		"""
-		Adjust the per-sample gradients in place, before the optimizer step.
-
-		Called by ``Client.update`` after ``loss.backward()`` and before
-		``optimizer.step()``. Implementations mutate ``parameter.grad_sample``
-		(e.g. zeroing the frozen LoRA factor for the current round). Methods that
-		need no per-step masking (standard DP-SGD) implement this as a no-op.
+		Perform a single optimization step to update trainable parameters.
 
 		Parameters
 		----------
-		model : Module
-			The client's (Opacus-wrapped) model with populated ``grad_sample``s.
+		model : nn.Module
+			The local PEFT model.
+		optimizer : DPOptimizer
+			The wrapper that adds additional functionality to clip per sample
+			gradients and add Gaussian noise.
 		round : int
-			The current global communication round (1-indexed).
+			The current global communication round.
 		"""
 		...
 
-	# TODO: rewrite docstring
 	def aggregate(
-		self, uploads: list[dict[str, torch.Tensor]], round: int
+		self,
+		uploads: list[dict[str, torch.Tensor]],
+		num_examples: list[int],
 	) -> dict[str, torch.Tensor]:
 		"""
-		Combine the per-client trainable-state uploads into the new global state.
+		Aggregate client trainable parameter state-dict updates to the model.
 
 		Parameters
 		----------
 		uploads : list[dict[str, torch.Tensor]]
-			One state-dict snapshot per client, each restricted to the federated
-			(trainable) keys: the LoRA A/B factors and the classification head.
-		round : int
-			The current global communication round (1-indexed).
+			The client trainable parameter state-dict updates to the model.
+		num_examples : list[int]
+			The total number of examples of each client.
 
 		Returns
 		-------
 		dict[str, torch.Tensor]
-			The new global state, i.e. the per-key aggregate over clients.
+			The aggregated client updates to the model.
 		"""
 		...

@@ -38,24 +38,31 @@ class Server:
 	@staticmethod
 	def fedavg(
 		uploads: list[dict[str, torch.Tensor]],
+		num_examples: list[int],
 	) -> dict[str, torch.Tensor]:
 		"""
-		TODO
+		Calculate the weighted average of client updates to the model.
 
 		Parameters
 		----------
 		uploads : list[dict[str, torch.Tensor]]
-			TODO
+			The client trainable parameter state-dict updates to the model.
+		num_examples : list[int]
+			The total number of examples of each client.
 
 		Returns
 		-------
 		dict[str, torch.Tensor]
-			TODO
+			The aggregated client updates to the model.
 		"""
+		total = sum(num_examples)
+		weights = [n / total for n in num_examples]
+
 		return {
-			key: torch.stack(
-				[upload[key].float() for upload in uploads], dim=0
-			).mean(dim=0)
+			key: sum(
+				w * upload[key].float()
+				for w, upload in zip(weights, uploads, strict=False)
+			)
 			for key in uploads[0]
 		}
 
@@ -85,7 +92,10 @@ class Server:
 				losses.append(loss)
 
 			# aggregate client uploads into the new global state
-			agg = self.method.aggregate(uploads=uploads, round=round)
+			num_examples = [client.num_examples for client in selected]
+			agg = self.method.aggregate(
+				uploads=uploads, num_examples=num_examples, round=round
+			)
 
 			# update the global model with the aggregated weights
 			load_trainable_state(self.model, agg)

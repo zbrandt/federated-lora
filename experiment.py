@@ -80,6 +80,7 @@ def build(config: Config) -> Server:
 	clients = []
 	for i, dataloader in enumerate(train_dataloaders):
 		local_model = copy.deepcopy(model).to('cpu')
+		num_examples = len(dataloader.dataset)
 
 		params_A, params_B, params_head = group_trainable_parameters(
 			local_model
@@ -94,7 +95,7 @@ def build(config: Config) -> Server:
 		)
 
 		sigma = compute_noise_level(
-			num_examples=len(dataloader.dataset),
+			num_examples=num_examples,
 			batch_size=config.batch_size,
 			global_rounds=config.global_rounds,
 			local_steps=config.local_steps,
@@ -114,10 +115,11 @@ def build(config: Config) -> Server:
 		clients.append(
 			Client(
 				id=i,
-				model=model,
+				model=local_model,
 				dataloader=dataloader,
 				optimizer=optimizer,
 				privacy_engine=privacy_engine,
+				num_examples=num_examples,
 				steps=config.local_steps,
 				device=device,
 			)

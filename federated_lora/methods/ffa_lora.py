@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import torch
-from torch.nn import Module
+import torch.nn as nn
+from opacus.optimizers.optimizer import DPOptimizer
 
 from federated_lora.server import Server
 
@@ -9,23 +10,22 @@ from federated_lora.server import Server
 class FFALoRA:
 	name = 'ffa_lora'
 
-	def set_target_modules(self, model: Module) -> None:
+	def set_target_modules(self, model: nn.Module) -> None:
 		for name, parameter in model.named_parameters():
 			if 'lora_B' in name or 'classifier' in name:
 				parameter.requires_grad = True
 			else:
 				parameter.requires_grad = False
 
-	def local_update(
-		self,
-		model: Module,
-		round: int,
+	def step(
+		self, model: nn.Module, optimizer: DPOptimizer, round: int
 	) -> None:
-		return None
+		optimizer.step()
+		optimizer.zero_grad()
 
 	def aggregate(
 		self,
 		uploads: list[dict[str, torch.Tensor]],
-		round: int,
+		num_examples: list[int],
 	) -> dict[str, torch.Tensor]:
-		return Server.fedavg(uploads)
+		return Server.fedavg(uploads, num_examples)

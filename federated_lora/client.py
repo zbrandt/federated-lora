@@ -24,6 +24,7 @@ class Client:
 		dataloader: DataLoader,
 		optimizer: Optimizer,
 		privacy_engine: PrivacyEngine,
+		num_examples: float,
 		steps: int,
 		device: torch.device,
 	) -> None:
@@ -32,6 +33,7 @@ class Client:
 		self.dataloader = dataloader
 		self.optimizer = optimizer
 		self.privacy_engine = privacy_engine
+		self.num_examples = num_examples
 		self.steps = steps
 		self.device = device
 
@@ -58,10 +60,11 @@ class Client:
 			loss = out.loss
 			loss.backward()
 
-			method.local_update(model=self.model, round=round)
+			method.step(
+				model=self.model, optimizer=self.optimizer, round=round
+			)
 
-			self.optimizer.step()
-			clear_gradients(self.model)
+			self.optimizer.zero_grad(set_to_none=True)
 
 			total_loss += float(loss.item())
 

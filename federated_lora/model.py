@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import torch
-from peft import LoraConfig, PeftModel, get_peft_model
 import torch.nn as nn
+from peft import LoraConfig, PeftModel, get_peft_model
 from transformers import AutoModelForImageClassification
 
 from federated_lora.method import Method
+
 
 def create_peft_model(
 	name: str,
@@ -18,7 +19,7 @@ def create_peft_model(
 	device: torch.device,
 ) -> PeftModel:
 	"""
-	Create a trainable PeftModel from the base model and the parameters for 
+	Create a trainable PeftModel from the base model and the parameters for
 	training with LoRA.
 
 	Parameters
@@ -60,9 +61,10 @@ def create_peft_model(
 
 	model = get_peft_model(base, peft_config)
 
-	method.set_target_modules(model) 
+	method.set_target_modules(model)
 
 	return model
+
 
 # TODO: figure out how to unrwap the standard nn.Module wrapped by the privacy engine
 def unwrap(model: nn.Module) -> nn.Module:
@@ -78,12 +80,14 @@ def get_trainable_parameters(model: nn.Module) -> set[str]:
 	"""
 	target = unwrap(model)
 	return {
-		name for name, param in target.named_parameters() if param.requires_grad
+		name
+		for name, param in target.named_parameters()
+		if param.requires_grad
 	}
 
 
 def group_trainable_parameters(model: nn.Module) -> tuple[list, list, list]:
-	""" 
+	"""
 	Group trainable parameters from LoRA matrices A & B and the classifier head.
 	"""
 	params_A, params_B, params_head = [], [], []
@@ -97,15 +101,6 @@ def group_trainable_parameters(model: nn.Module) -> tuple[list, list, list]:
 		else:
 			params_head.append(param)
 	return params_A, params_B, params_head
-
-# TODO
-def clear_gradients(model: nn.Module) -> None:
-	""" """
-	for param in model.parameters():
-		if param.grad is not None:
-			param.grad = None
-		if hasattr(param, 'grad_sample'):
-			param.grad_sample = None
 
 
 def get_trainable_state(model: nn.Module) -> dict[str, torch.Tensor]:
@@ -122,8 +117,7 @@ def get_trainable_state(model: nn.Module) -> dict[str, torch.Tensor]:
 
 
 def load_trainable_state(
-	model: nn.Module, 
-	state: dict[str, torch.Tensor]
+	model: nn.Module, state: dict[str, torch.Tensor]
 ) -> None:
 	"""
 	Load trainable parameters from ``state`` into model.
