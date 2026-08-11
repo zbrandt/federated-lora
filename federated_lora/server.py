@@ -94,7 +94,7 @@ class Server:
 			# aggregate client uploads into the new global state
 			num_examples = [client.num_examples for client in selected]
 			agg = self.method.aggregate(
-				uploads=uploads, num_examples=num_examples, round=round
+				uploads=uploads, num_examples=num_examples
 			)
 
 			# update the global model with the aggregated weights
