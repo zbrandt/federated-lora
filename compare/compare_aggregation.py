@@ -8,11 +8,8 @@ otherwise carries the previous value forward.
 from __future__ import annotations
 
 import argparse
-import sys
 from collections import defaultdict
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ffalora.config import Config
 from sweep import _run_one
@@ -80,6 +77,7 @@ def main() -> None:
         mean = sum(accs) / len(accs)
         std = (sum((a - mean) ** 2 for a in accs) / len(accs)) ** 0.5
         print(f"{strategy:>12} | {len(accs):>7} | {mean:>8.4f} | {std:>6.4f}")
+
 
 
 if __name__ == "__main__":
