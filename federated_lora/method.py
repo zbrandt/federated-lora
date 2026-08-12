@@ -3,76 +3,66 @@ from __future__ import annotations
 from typing import Protocol
 
 import torch
-from torch.nn import Module
+import torch.nn as nn
+from opacus.optimizers.optimizer import DPOptimizer
 
-# TODO: rewrite docstrings
+
 class Method(Protocol):
 	"""
-	A federated LoRA training method.
-
-	Standard methods implement the "thin" contract below: ``Client.update`` runs
-	the shared DP-SGD loop and calls ``local_update`` after each backward pass to
-	mask or adjust the per-sample gradients in place, before the DP optimizer
-	step. A method that must own its full local loop -- e.g. LaLoRA, whose
-	gradient smoothing runs *after* Opacus clips and noises -- instead exposes a
-	``run_local`` method and is detected via ``hasattr(method, 'run_local')``, so
-	no ``bespoke`` flag is needed.
+	A federated fine-tuning method.
 	"""
 
 	name: str
 
-	def prepare_model(self, model: Module) -> None:
+	def set_target_modules(self, model: nn.Module) -> None:
 		"""
-		Select which parameters this method trains by setting ``requires_grad``,
-		before the optimizer and Opacus are built.
-
-		Called once by ``experiment.build`` on the global model; the flags are
-		inherited by the per-client copies. Most methods train both LoRA factors
-		and the classification head; FFA-LoRA freezes A here so it stays out of
-		the DP budget entirely.
+		Configure which modules of the model to adapt.
 
 		Parameters
 		----------
-		model : Module
-			The freshly created PEFT model.
+		model : nn.Module
+			The PEFT model.
 		"""
 		...
 
-	def local_update(self, model: Module, round: int) -> None:
+	def step(
+		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
+	) -> None:
 		"""
-		Adjust the per-sample gradients in place, before the optimizer step.
-
-		Called by ``Client.update`` after ``loss.backward()`` and before
-		``optimizer.step()``. Implementations mutate ``parameter.grad_sample``
-		(e.g. zeroing the frozen LoRA factor for the current round). Methods that
-		need no per-step masking (standard DP-SGD) implement this as a no-op.
+		Perform a single optimization step to update trainable parameters.
 
 		Parameters
 		----------
-		model : Module
-			The client's (Opacus-wrapped) model with populated ``grad_sample``s.
+		model : nn.Module
+			The local PEFT model.
+		optimizer : DPOptimizer
+			The wrapper that adds additional functionality to clip per sample
+			gradients and add Gaussian noise.
 		round : int
-			The current global communication round (1-indexed).
+			The current global communication round.
+		step : int
+			The current local step.
 		"""
 		...
 
 	def aggregate(
-		self, uploads: list[dict[str, torch.Tensor]], round: int
+		self,
+		uploads: list[dict[str, torch.Tensor]],
+		num_examples: list[int],
 	) -> dict[str, torch.Tensor]:
 		"""
-		Combine the per-client trainable-state uploads into the new global state.
+		Aggregate client trainable parameter state-dict updates to the model.
 
 		Parameters
 		----------
 		uploads : list[dict[str, torch.Tensor]]
-			One state-dict snapshot per client, each restricted to the federated
-			(trainable) keys: the LoRA A/B factors and the classification head.
-		round : int
-			The current global communication round (1-indexed).
+			The client trainable parameter state-dict updates to the model.
+		num_examples : list[int]
+			The total number of examples of each client.
 
 		Returns
 		-------
 		dict[str, torch.Tensor]
-			The new global state, i.e. the per-key aggregate over clients.
+			The aggregated client updates to the model.
 		"""
 		...

@@ -36,7 +36,7 @@ the ICE.
 
 ## Usage
 
-Run a method on a task for a given seed.
+Run a task with a federated fine-tuning method for a given seed.
 
 ```bash
 # fine-tune ViT-Base on CIFAR-100 with RoLoRA
@@ -45,9 +45,11 @@ python experiment.py --task cifar100 --method rolora --seed 42
 
 Each run auto-saves to `results/<method>_<task>_seed<seed>.json`
 
-The CLI exposes `--method`, `--task`, `--seed`, and `--output-dir`. The full 
-harness configuration of hyperparameters (client count, global rounds, LoRA 
-rank, learning rates, privacy budget, etc.) lives in `federated_lora/config.py`. 
+The CLI exposes required flags `--task` and `--method`, while setting batch 
+size, target epsilon, learning rates for LoRA matrix A & B and classifier head 
+parameters, seed, and output directory are optional. The full harness 
+configuration of hyperparameters (client count, global rounds, local steps, 
+LoRA rank, etc.) lives in `federated_lora/config.py`. 
 
 Repeat across seeds to build the mean and standard-deviation bands.
 
