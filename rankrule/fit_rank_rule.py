@@ -7,14 +7,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import defaultdict
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
 
 from ffalora.config import Config
 from ffalora.rank_rule import GLUE_TRAIN_SIZES, noise_multiplier
-from validate_rank_rule import _final_accuracy, load_grid
+from rankrule.validate_rank_rule import _final_accuracy, load_grid
 
 # Loads the final accuracies from the no-DP rank sweep.
 def load_rank_sweep(results_dir: Path, tail: int) -> dict[int, list[float]]:

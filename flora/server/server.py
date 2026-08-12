@@ -1,22 +1,15 @@
-"""
-The Server runs the federated learning loop: each round it picks some
-clients, sends them the current model, collects their local updates,
-averages them together, and evaluates the result.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ffalora.config import Config
-from ffalora.eval import evaluate_accuracy
-from ffalora.server.selection import select_clients
-from ffalora.server.broadcast import broadcast
-from ffalora.server.aggregate import aggregate
-from ffalora.server.computation import client_computation
+from flora.config import Config
+from flora.eval import evaluate_accuracy
+from flora.method import Method
+from flora.server.selection import select_clients
+from flora.server.broadcast import broadcast
+from flora.server.computation import client_computation
 
 
-# Everything logged about one round of training.
 @dataclass(slots=True)
 class RoundMetrics:
 	round_index: int
@@ -29,8 +22,9 @@ class RoundMetrics:
 
 
 class Server:
-	# Store the model, clients, and starting state for a run.
-	def __init__(self, config: Config, model, clients, eval_dataset, tokenizer, device, generator) -> None:
+	def __init__(
+			self, config: Config, model, clients, eval_dataset, tokenizer, device, generator, method: Method,
+		) -> None:
 		self.config = config
 		self.model = model
 		self.clients = clients
@@ -38,13 +32,13 @@ class Server:
 		self.tokenizer = tokenizer
 		self.device = device
 		self.generator = generator
+		self.method = method
 		self.global_state = {
 			key: value.detach().cpu().clone()
 			for key, value in model.state_dict().items()
-			if key.endswith(".B.weight") or "classifier" in key
+			if key.endswith(".A.weight") or key.endswith(".B.weight") or "classifier" in key
 		}
 
-	# Run every round: select clients, broadcast the model, train, aggregate, and evaluate.
 	def run(self) -> list[RoundMetrics]:
 		history: list[RoundMetrics] = []
 		cumulative = 0
@@ -57,14 +51,12 @@ class Server:
 			broadcast(self.model, self.global_state)
 
 			# Client computation
-			states, losses, weights, uploaded, epsilons = client_computation(selected_clients, self.model, self.global_state)
-
-			# Aggregation: FFA-LoRA's frozen, shared A makes plain weighted averaging exact
-			# (see server/aggregate.py) -- no extra merge step needed between rounds.
-			ranks = [client.rank for client in selected_clients]
-			self.global_state = aggregate(
-				states, weights, ranks, self.global_state, strategy=self.config.aggregation_strategy,
+			states, losses, weights, uploaded, epsilons = client_computation(
+				selected_clients, self.model, self.global_state, round_index,
 			)
+
+			# Aggregation
+			self.global_state = self.method.aggregate(states, weights)
 
 			self.model.load_state_dict(self.global_state, strict=False)
 
