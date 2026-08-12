@@ -63,10 +63,5 @@ class LALoRA:
 	def aggregate(
 		self, uploads: list[dict[str, torch.Tensor]], num_examples: list[int]
 	) -> dict[str, torch.Tensor]:
-		# return {
-		# 	key: torch.stack(
-		# 		[upload[key].float() for upload in uploads], dim=0
-		# 	).mean(dim=0)
-		# 	for key in uploads[0]
-		# }
-		return Server.fedavg(uploads, num_examples)
+		agg = Server.fedavg(uploads, num_examples)
+		return {cid: agg for cid in uploads}, agg

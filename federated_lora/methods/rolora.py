@@ -39,4 +39,5 @@ class RoLoRA:
 		uploads: list[dict[str, torch.Tensor]],
 		num_examples: list[int],
 	) -> dict[str, torch.Tensor]:
-		return Server.fedavg(uploads, num_examples)
+		agg = Server.fedavg(uploads, num_examples)
+		return {cid: agg for cid in uploads}, agg

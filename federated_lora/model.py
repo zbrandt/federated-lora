@@ -7,7 +7,7 @@ from transformers import AutoModelForImageClassification
 
 from federated_lora.method import Method
 
-
+# TODO: Modify so that the lora_rank can be a list of ranks
 def create_peft_model(
 	name: str,
 	num_labels: int,
@@ -50,6 +50,7 @@ def create_peft_model(
 		name, num_labels=num_labels, ignore_mismatched_sizes=True
 	).to(device)
 
+	# use the last rank for initial configuration, but the rank can be changed later
 	peft_config = LoraConfig(
 		r=lora_rank,
 		lora_alpha=lora_alpha,

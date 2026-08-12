@@ -51,17 +51,20 @@ def build(config: Config) -> Server:
 
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+	method = get_method(config.method)
+
+	eval_rank = max(config.client_ranks) if config.client_ranks else config.lora_rank
+
 	model = create_peft_model(
 		name=config.model,
 		num_labels=config.num_labels,
-		lora_rank=config.lora_rank,
+		lora_rank=eval_rank
 		target_modules=config.target_modules,
 		lora_alpha=config.lora_alpha,
 		lora_dropout=config.lora_dropout,
 		device=device,
+		method=method,
 	)
-
-	method = get_method(config.method)
 
 	data_dir = load_datasets(
 		name=config.dataset,
@@ -79,7 +82,23 @@ def build(config: Config) -> Server:
 
 	clients = []
 	for i, dataloader in enumerate(train_dataloaders):
-		local_model = copy.deepcopy(model).to('cpu')
+		# if client ranks exists, have it vary for client
+		# if not, use the default lora_rank from config
+		if config.client_ranks:
+			lora_rank = config.client_ranks[i]
+			local_model = copy.create_peft_model(
+				name=config.model,
+				num_labels=config.num_labels,
+				lora_rank=lora_rank,
+				target_modules=config.target_modules,
+				lora_alpha=config.lora_alpha,
+				lora_dropout=config.lora_dropout,
+				method= method,
+				device=device,
+			).to('cpu')
+		else:
+			local_model = copy.deepcopy(model).to('cpu')
+		# local_model = copy.deepcopy(model).to('cpu')
 		num_examples = len(dataloader.dataset)
 
 		params_A, params_B, params_head = group_trainable_parameters(

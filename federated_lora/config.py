@@ -16,7 +16,9 @@ class Config:
 
 	model: str = 'google/vit-base-patch16-224-in21k'
 	num_labels: int = 100  # number of labels to use in the last layer added to the model, typically for a classification task
+	# i am keeping this as a fallback
 	lora_rank: int = 8
+	client_ranks: tuple[int, ...] | None=None
 	lora_alpha: int = 8
 	target_modules: tuple[str, ...] = ('query', 'value')
 	lora_dropout: float = 0.05
@@ -27,7 +29,9 @@ class Config:
 	num_workers: int = 8
 
 	clip_norm: float = 1.0  # per-sample L2 clipping norm
-	target_epsilon: float = 3.0
+	# target_epsilon: float = 3.0
+	# add epsilons 
+	target_epsilons: list[float] = (1.0, 2.0, 4.0, 8.0) 
 	target_delta: float = 1e-5
 
 	lr_a: float = 0.25

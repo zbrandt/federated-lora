@@ -47,9 +47,9 @@ class Method(Protocol):
 
 	def aggregate(
 		self,
-		uploads: list[dict[str, torch.Tensor]],
-		num_examples: list[int],
-	) -> dict[str, torch.Tensor]:
+		uploads: dict[int, dict[str, torch.Tensor]],
+		num_examples: dict[int, int],
+	) -> tuple[dict[int, dict[str, torch.Tensor]], dict[str, torch.Tensor]]:
 		"""
 		Aggregate client trainable parameter state-dict updates to the model.
 

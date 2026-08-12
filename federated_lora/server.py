@@ -34,11 +34,12 @@ class Server:
 		self.test_dataloader = test_dataloader
 		self.device = device
 		self.seed = seed
+		self.per_client_state: dict[int, dict[str, torch.Tensor]] = { client.id: get_trainable_state(client.model) for client in clients }
 
 	@staticmethod
 	def fedavg(
-		uploads: list[dict[str, torch.Tensor]],
-		num_examples: list[int],
+		uploads: dict[int, dict[str, torch.Tensor]],
+		num_examples: dict[int, int],
 	) -> dict[str, torch.Tensor]:
 		"""
 		Calculate the weighted average of client updates to the model.
@@ -55,15 +56,17 @@ class Server:
 		dict[str, torch.Tensor]
 			The aggregated client updates to the model.
 		"""
-		total = sum(num_examples)
-		weights = [n / total for n in num_examples]
+		total = sum(num_examples.values())
+		weights = {cid: n / total for cid, n in num_examples.items()}
+		keys = next(iter(uploads.values())).keys()
 
+		# rewrite such that we are taking the keys and the items from the client dictionray
 		return {
 			key: sum(
-				w * upload[key].float()
-				for w, upload in zip(weights, uploads, strict=False)
+				weights[cid] * upload[key].float()
+				for cid, upload in uploads.items()
 			)
-			for key in uploads[0]
+			for key in keys
 		}
 
 	def run(self):
@@ -77,28 +80,38 @@ class Server:
 			selected = [self.clients[i] for i in indices]
 
 			t0 = time.perf_counter()
-			uploads, losses = [], []
+			uploads, losses = {}, []
 			for client in selected:
+				load_trainable_state(client.model, self.per_client_state[client.id])
 				# broadcast model weights
-				global_state = get_trainable_state(self.model)
-				load_trainable_state(client.model, global_state)
+				# global_state = get_trainable_state(self.model)
+				# needs to have a rank-aware variant
+				# update the local client model based on rank \
+				# what does flora broadcast to all of the clients at each round?
+				# expand global state to make each client key have as its value a dictionary of parameter name, parameter value
+
+				# load_trainable_state(client.model, global_state)
 
 				# compute local client uploads
 				upload, loss = client.local_update(
 					round=round, method=self.method
 				)
 
-				uploads.append(upload)
+				# storing uploads in a dictionary
+				uploads[client.id] = upload
 				losses.append(loss)
 
 			# aggregate client uploads into the new global state
-			num_examples = [client.num_examples for client in selected]
-			agg = self.method.aggregate(
-				uploads=uploads, num_examples=num_examples, round=round
-			)
+			# num_examples = [client.num_examples for client in selected]
+			num_examples = {client.id: client.num_examples for client in selected}
+			# aggregate all of the uploads, for different client states
+			self.per_client_state, eval_state = self.method.aggregate(uploads=uploads, num_examples=num_examples)
+			# agg = self.method.aggregate(
+			# 	uploads=uploads, num_examples=num_examples, round=round
+			# )
 
 			# update the global model with the aggregated weights
-			load_trainable_state(self.model, agg)
+			load_trainable_state(self.model, eval_state)
 
 			t1 = time.perf_counter()
 			test_loss, top1_acc, top5_acc = evaluate(
