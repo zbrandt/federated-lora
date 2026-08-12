@@ -47,7 +47,7 @@ def partition_dirichlet(
 		# repeat alpha num_clients times
 		proportions = rng.dirichlet(np.repeat(alpha, num_clients))
 
-		splits = np.round((np.cumsum(proportions) * len(idx))).astype(int)[:-1]
+		splits = np.round(np.cumsum(proportions) * len(idx)).astype(int)[:-1]
 		client_splits = np.split(idx, splits)
 
 		for client_id, split in enumerate(client_splits):
@@ -59,6 +59,7 @@ def partition_dirichlet(
 def cycle(dataloader: DataLoader) -> Iterable:
 	while True:
 		yield from dataloader
+
 
 # TODO: rewrite docstring
 def prepare_dataloaders(
@@ -113,7 +114,7 @@ def prepare_dataloaders(
 	client_dataloaders = []
 	for i in range(num_clients):
 		shard = np.load(data_dir / f'shard_{i}.npz')
-		dataset = list(zip(shard['images'], shard['labels']))
+		dataset = list(zip(shard['images'], shard['labels'], strict=False))
 
 		n = len(dataset)
 		sample_rate = min(1.0, batch_size / max(1, n))
@@ -133,7 +134,7 @@ def prepare_dataloaders(
 		client_dataloaders.append(train_dataloader)
 
 	test = np.load(data_dir / 'test.npz')
-	test_dataset = list(zip(test['images'], test['labels']))
+	test_dataset = list(zip(test['images'], test['labels'], strict=False))
 	test_dataloader = DataLoader(
 		test_dataset,
 		batch_size=eval_batch_size,
