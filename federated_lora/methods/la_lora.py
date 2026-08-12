@@ -5,6 +5,8 @@ import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 from torch.nn import functional as F
 
+from federated_lora.server import Server
+
 
 class LALoRA:
 	name = 'la_lora'

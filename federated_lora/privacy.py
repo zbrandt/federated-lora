@@ -6,6 +6,7 @@ import numpy as np
 from opacus.accountants import RDPAccountant
 from opacus.accountants.utils import get_noise_multiplier
 
+
 # TODO: rewrite docstring
 def compute_noise_level(
 	num_examples: int,
@@ -53,10 +54,7 @@ def compute_noise_level(
 			accountant='prv',
 		)
 
-	print(
-		f'size: {num_examples}, '
-		f'sample_rate: {sample_rate}, sigma: {sigma}'
-	)
+	print(f'size: {num_examples}, sample_rate: {sample_rate}, sigma: {sigma}')
 	return sigma
 
 
