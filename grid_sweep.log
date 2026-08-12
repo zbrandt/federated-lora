@@ -14678,3 +14678,134 @@ Notes:
 [round 14/100] train_loss=1.2255 eval_loss=0.9163 acc=0.5092 eps=1.2071
 [round 15/100] train_loss=0.6842 eval_loss=1.3352 acc=0.5092 eps=1.9142
 [round 16/100] train_loss=0.5910 eval_loss=0.9522 acc=0.5092 eps=1.8915
+[round 17/100] train_loss=0.7259 eval_loss=1.9584 acc=0.5092 eps=2.0561
+[round 18/100] train_loss=0.8518 eval_loss=2.4743 acc=0.5092 eps=2.1906
+[round 19/100] train_loss=0.8299 eval_loss=1.6211 acc=0.4908 eps=1.3236
+[round 20/100] train_loss=0.7950 eval_loss=1.7494 acc=0.5092 eps=2.3190
+[round 21/100] train_loss=0.9429 eval_loss=1.5989 acc=0.5092 eps=2.4420
+[round 22/100] train_loss=1.0565 eval_loss=3.4443 acc=0.5092 eps=2.5604
+[round 23/100] train_loss=1.8523 eval_loss=1.2095 acc=0.4908 eps=1.7077
+[round 24/100] train_loss=0.7282 eval_loss=0.9943 acc=0.5092 eps=1.6875
+[round 25/100] train_loss=0.5505 eval_loss=4.0742 acc=0.5092 eps=2.6748
+[round 26/100] train_loss=1.8376 eval_loss=0.7414 acc=0.5092 eps=1.8810
+[round 27/100] train_loss=0.8705 eval_loss=2.9999 acc=0.5092 eps=2.7856
+[round 28/100] train_loss=1.8515 eval_loss=0.9875 acc=0.5092 eps=2.1143
+[round 29/100] train_loss=0.8348 eval_loss=1.9437 acc=0.5092 eps=2.2530
+[round 30/100] train_loss=0.5639 eval_loss=3.0907 acc=0.5092 eps=2.8932
+[round 31/100] train_loss=1.5425 eval_loss=1.6950 acc=0.5092 eps=2.0806
+[round 32/100] train_loss=0.9744 eval_loss=1.1703 acc=0.5092 eps=2.9979
+[round 33/100] train_loss=0.8776 eval_loss=0.6765 acc=0.7099 eps=2.1647
+[round 34/100] train_loss=0.7595 eval_loss=2.6828 acc=0.5092 eps=2.2167
+[round 35/100] train_loss=1.3190 eval_loss=0.9639 acc=0.5092 eps=2.3465
+[round 36/100] train_loss=0.6858 eval_loss=1.2879 acc=0.4908 eps=2.4132
+[round 37/100] train_loss=1.0338 eval_loss=1.4034 acc=0.4908 eps=2.5302
+[round 38/100] train_loss=1.0811 eval_loss=2.0708 acc=0.5092 eps=2.4710
+[round 39/100] train_loss=0.6570 eval_loss=1.1062 acc=0.5092 eps=3.0999
+[round 40/100] train_loss=1.0922 eval_loss=0.6844 acc=0.5138 eps=2.7066
+[round 41/100] train_loss=0.7915 eval_loss=0.8453 acc=0.4908 eps=2.7528
+[round 42/100] train_loss=0.9278 eval_loss=2.1534 acc=0.5092 eps=2.8187
+[round 43/100] train_loss=0.9283 eval_loss=2.3863 acc=0.5092 eps=2.3854
+[round 44/100] train_loss=0.9816 eval_loss=2.8184 acc=0.5092 eps=3.1995
+[round 45/100] train_loss=2.0179 eval_loss=0.5701 acc=0.7156 eps=2.8591
+[round 46/100] train_loss=0.7004 eval_loss=0.4310 acc=0.8429 eps=2.9276
+[round 47/100] train_loss=0.5876 eval_loss=0.5844 acc=0.8440 eps=2.6408
+[round 48/100] train_loss=0.4466 eval_loss=1.5127 acc=0.7466 eps=3.2969
+[round 49/100] train_loss=0.4859 eval_loss=0.5899 acc=0.8773 eps=2.4855
+[round 50/100] train_loss=0.5432 eval_loss=0.6759 acc=0.8704 eps=3.0335
+[round 51/100] train_loss=0.4031 eval_loss=1.2768 acc=0.7947 eps=2.6070
+[round 52/100] train_loss=0.8093 eval_loss=1.2115 acc=0.8073 eps=2.4517
+[round 53/100] train_loss=0.4614 eval_loss=0.6130 acc=0.8819 eps=2.7338
+[round 54/100] train_loss=0.5424 eval_loss=0.6386 acc=0.8876 eps=2.8562
+[round 55/100] train_loss=0.6346 eval_loss=0.7241 acc=0.8807 eps=3.1367
+[round 56/100] train_loss=0.3973 eval_loss=1.6203 acc=0.7695 eps=3.3922
+[round 57/100] train_loss=0.9018 eval_loss=0.8207 acc=0.8544 eps=2.8935
+[round 58/100] train_loss=0.6928 eval_loss=0.6541 acc=0.8865 eps=3.2375
+[round 59/100] train_loss=0.4624 eval_loss=0.7921 acc=0.8704 eps=2.9625
+[round 60/100] train_loss=0.7119 eval_loss=0.7849 acc=0.8716 eps=2.9778
+[round 61/100] train_loss=0.5360 eval_loss=1.1505 acc=0.8372 eps=2.3964
+[round 62/100] train_loss=0.6429 eval_loss=1.4156 acc=0.8108 eps=2.6674
+[round 63/100] train_loss=0.6344 eval_loss=0.6484 acc=0.8933 eps=3.3361
+[round 64/100] train_loss=0.6263 eval_loss=0.6739 acc=0.8853 eps=3.0858
+[round 65/100] train_loss=0.4500 eval_loss=1.1082 acc=0.8383 eps=3.4856
+[round 66/100] train_loss=0.6360 eval_loss=0.8065 acc=0.8830 eps=3.1910
+[round 67/100] train_loss=0.4921 eval_loss=1.2540 acc=0.8349 eps=2.7689
+[round 68/100] train_loss=0.8646 eval_loss=0.6260 acc=0.8922 eps=3.1306
+[round 69/100] train_loss=0.5395 eval_loss=0.6271 acc=0.8945 eps=3.2938
+[round 70/100] train_loss=0.4849 eval_loss=0.5832 acc=0.8979 eps=3.2023
+[round 71/100] train_loss=0.4073 eval_loss=0.6107 acc=0.8968 eps=3.4325
+[round 72/100] train_loss=0.4421 eval_loss=0.6094 acc=0.8979 eps=2.7859
+[round 73/100] train_loss=0.4260 eval_loss=0.5734 acc=0.8979 eps=3.3116
+[round 74/100] train_loss=0.2436 eval_loss=0.6714 acc=0.8888 eps=3.5773
+[round 75/100] train_loss=0.5289 eval_loss=0.7826 acc=0.8796 eps=3.3943
+[round 76/100] train_loss=0.5298 eval_loss=0.7286 acc=0.8830 eps=3.1570
+[round 77/100] train_loss=0.5899 eval_loss=0.7404 acc=0.8888 eps=3.5271
+[round 78/100] train_loss=0.6413 eval_loss=0.6040 acc=0.8956 eps=3.2443
+[round 79/100] train_loss=0.5639 eval_loss=0.6866 acc=0.8842 eps=3.6199
+[round 80/100] train_loss=0.4542 eval_loss=0.6125 acc=0.8968 eps=2.9586
+[round 81/100] train_loss=0.4624 eval_loss=0.9833 acc=0.8601 eps=3.6673
+[round 82/100] train_loss=0.8962 eval_loss=0.8241 acc=0.8727 eps=2.6515
+[round 83/100] train_loss=0.6683 eval_loss=0.6284 acc=0.8968 eps=2.9729
+[round 84/100] train_loss=0.3000 eval_loss=1.0603 acc=0.8429 eps=3.7557
+[round 85/100] train_loss=0.5578 eval_loss=0.6644 acc=0.8865 eps=3.7109
+[round 86/100] train_loss=0.3891 eval_loss=0.5669 acc=0.8979 eps=3.4183
+[round 87/100] train_loss=0.4494 eval_loss=0.8911 acc=0.8658 eps=3.5892
+[round 88/100] train_loss=0.6137 eval_loss=1.1792 acc=0.8429 eps=3.1523
+[round 89/100] train_loss=0.6950 eval_loss=0.5785 acc=0.9025 eps=3.3377
+[round 90/100] train_loss=0.4596 eval_loss=0.6252 acc=0.8933 eps=3.5693
+[round 91/100] train_loss=0.3583 eval_loss=0.9894 acc=0.8521 eps=3.5227
+[round 92/100] train_loss=0.5354 eval_loss=0.6350 acc=0.8911 eps=3.2461
+[round 93/100] train_loss=0.3901 eval_loss=0.7738 acc=0.8865 eps=3.2709
+[round 94/100] train_loss=0.4820 eval_loss=0.5892 acc=0.9025 eps=3.3242
+[round 95/100] train_loss=0.4504 eval_loss=0.5840 acc=0.9037 eps=3.8005
+[round 96/100] train_loss=0.5544 eval_loss=0.5796 acc=0.9048 eps=3.8885
+[round 97/100] train_loss=0.4497 eval_loss=0.6039 acc=0.9014 eps=3.3522
+[round 98/100] train_loss=0.5557 eval_loss=0.7048 acc=0.8888 eps=3.4254
+[round 99/100] train_loss=0.5036 eval_loss=0.6219 acc=0.9002 eps=3.4590
+[round 100/100] train_loss=0.5326 eval_loss=0.7291 acc=0.8876 eps=3.9752
+[sweep] grid_sweep_r16_eps4_rounds100_nc20_bs512_ep3_seed1: wrote results/sweep/grid_sweep_r16_eps4_rounds100_nc20_bs512_ep3_seed1.json
+[sweep] grid_sweep_r16_eps4_rounds100_nc20_bs512_ep3_seed2: running (100 rounds, 20 clients)...
+Map:   0%|          | 0/6685 [00:00<?, ? examples/s]Map:  75%|███████▍  | 5000/6685 [00:00<00:00, 39032.54 examples/s]Map: 100%|██████████| 6685/6685 [00:00<00:00, 38301.09 examples/s]
+Map:   0%|          | 0/1665 [00:00<?, ? examples/s]Map: 100%|██████████| 1665/1665 [00:00<00:00, 34028.09 examples/s]
+Map:   0%|          | 0/8213 [00:00<?, ? examples/s]Map:  61%|██████    | 5000/8213 [00:00<00:00, 39608.51 examples/s]Map: 100%|██████████| 8213/8213 [00:00<00:00, 39392.62 examples/s]
+Map:   0%|          | 0/5259 [00:00<?, ? examples/s]Map:  95%|█████████▌| 5000/5259 [00:00<00:00, 39328.33 examples/s]Map: 100%|██████████| 5259/5259 [00:00<00:00, 38331.40 examples/s]
+Map:   0%|          | 0/4080 [00:00<?, ? examples/s]Map: 100%|██████████| 4080/4080 [00:00<00:00, 37666.67 examples/s]Map: 100%|██████████| 4080/4080 [00:00<00:00, 37185.81 examples/s]
+Map:   0%|          | 0/3084 [00:00<?, ? examples/s]Map: 100%|██████████| 3084/3084 [00:00<00:00, 35665.00 examples/s]
+Map:   0%|          | 0/171 [00:00<?, ? examples/s]Map: 100%|██████████| 171/171 [00:00<00:00, 18358.40 examples/s]
+Map:   0%|          | 0/6679 [00:00<?, ? examples/s]Map:  75%|███████▍  | 5000/6679 [00:00<00:00, 38488.05 examples/s]Map: 100%|██████████| 6679/6679 [00:00<00:00, 38224.05 examples/s]
+Map:   0%|          | 0/4127 [00:00<?, ? examples/s]Map: 100%|██████████| 4127/4127 [00:00<00:00, 37695.92 examples/s]Map: 100%|██████████| 4127/4127 [00:00<00:00, 37199.10 examples/s]
+Map:   0%|          | 0/7354 [00:00<?, ? examples/s]Map:  68%|██████▊   | 5000/7354 [00:00<00:00, 39458.35 examples/s]Map: 100%|██████████| 7354/7354 [00:00<00:00, 39541.21 examples/s]
+Map:   0%|          | 0/992 [00:00<?, ? examples/s]Map: 100%|██████████| 992/992 [00:00<00:00, 32830.83 examples/s]
+Map:   0%|          | 0/3994 [00:00<?, ? examples/s]Map: 100%|██████████| 3994/3994 [00:00<00:00, 39454.65 examples/s]Map: 100%|██████████| 3994/3994 [00:00<00:00, 38448.77 examples/s]
+Map:   0%|          | 0/467 [00:00<?, ? examples/s]Map: 100%|██████████| 467/467 [00:00<00:00, 25541.01 examples/s]
+Map:   0%|          | 0/812 [00:00<?, ? examples/s]Map: 100%|██████████| 812/812 [00:00<00:00, 30276.51 examples/s]
+Map:   0%|          | 0/4385 [00:00<?, ? examples/s]Map: 100%|██████████| 4385/4385 [00:00<00:00, 39496.17 examples/s]Map: 100%|██████████| 4385/4385 [00:00<00:00, 38888.95 examples/s]
+Map:   0%|          | 0/1390 [00:00<?, ? examples/s]Map: 100%|██████████| 1390/1390 [00:00<00:00, 33163.15 examples/s]
+Map:   0%|          | 0/1321 [00:00<?, ? examples/s]Map: 100%|██████████| 1321/1321 [00:00<00:00, 33070.76 examples/s]
+Map:   0%|          | 0/4346 [00:00<?, ? examples/s]Map: 100%|██████████| 4346/4346 [00:00<00:00, 38506.92 examples/s]Map: 100%|██████████| 4346/4346 [00:00<00:00, 37928.52 examples/s]
+Map:   0%|          | 0/1181 [00:00<?, ? examples/s]Map: 100%|██████████| 1181/1181 [00:00<00:00, 31686.61 examples/s]
+Map:   0%|          | 0/1144 [00:00<?, ? examples/s]Map: 100%|██████████| 1144/1144 [00:00<00:00, 30542.67 examples/s]
+Map:   0%|          | 0/872 [00:00<?, ? examples/s]Map: 100%|██████████| 872/872 [00:00<00:00, 27556.27 examples/s]
+Loading weights:   0%|          | 0/197 [00:00<?, ?it/s]Loading weights: 100%|██████████| 197/197 [00:00<00:00, 4660.00it/s]
+[transformers] [1mRobertaForSequenceClassification LOAD REPORT[0m from: roberta-base
+Key                        | Status     | 
+---------------------------+------------+-
+lm_head.dense.bias         | UNEXPECTED | 
+lm_head.layer_norm.bias    | UNEXPECTED | 
+lm_head.bias               | UNEXPECTED | 
+lm_head.dense.weight       | UNEXPECTED | 
+lm_head.layer_norm.weight  | UNEXPECTED | 
+classifier.dense.bias      | MISSING    | 
+classifier.out_proj.weight | MISSING    | 
+classifier.out_proj.bias   | MISSING    | 
+classifier.dense.weight    | MISSING    | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING:	those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+[round 1/100] train_loss=0.8520 eval_loss=0.9239 acc=0.4908 eps=0.7093
+[round 2/100] train_loss=1.0235 eval_loss=0.7011 acc=0.5092 eps=1.0019
+[round 3/100] train_loss=0.8472 eval_loss=1.3497 acc=0.5092 eps=1.0321
+[round 4/100] train_loss=1.2736 eval_loss=1.6860 acc=0.5092 eps=1.2697
+[round 5/100] train_loss=0.7511 eval_loss=0.7689 acc=0.5092 eps=1.0158
+[round 6/100] train_loss=0.6964 eval_loss=0.9778 acc=0.5092 eps=1.2583
+[round 7/100] train_loss=0.8737 eval_loss=0.8184 acc=0.5092 eps=1.0488
