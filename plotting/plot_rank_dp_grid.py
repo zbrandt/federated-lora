@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from ffalora.config import Config
 from ffalora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
-from validate_rank_rule import load_grid
+from rankrule.validate_rank_rule import load_grid
 
 OUTPUT_PATH = Path("figures/sweep/rank_dp_grid.png")
 

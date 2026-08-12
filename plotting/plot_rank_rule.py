@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from ffalora.config import Config
 from ffalora.rank_rule import ACC_NODP_BY_RANK, GLUE_TRAIN_SIZES, kappa, noise_multiplier
-from validate_rank_rule import load_grid
+from rankrule.validate_rank_rule import load_grid
 
 OUTPUT_PATH = Path("figures/sweep/rank_rule_model.png")
 

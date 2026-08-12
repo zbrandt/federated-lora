@@ -12,7 +12,7 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from fit_rank_rule import load_rank_sweep
+from rankrule.fit_rank_rule import load_rank_sweep
 
 OUTPUT_PATH = Path("figures/sweep/rank_nodp_trend.png")
 

@@ -50,6 +50,7 @@ class Config:
 
     # Per-client LoRA rank (optional; None => every client uses lora_rank)
     client_ranks: list[int] | None = None
+    aggregation_strategy: str = "naive"  # "naive" or "rank_aware" (see ffalora/server/aggregate.py)
 
     # Per-client DP epsilon (optional; None => no client uses DP). A client with its own entry set
     # to None always skips DP, regardless of what other clients are set to.

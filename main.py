@@ -7,6 +7,7 @@ import importlib
 METHOD_PACKAGES = {
     "lalora": "la_lora",
     "ffalora": "ffalora",
+    "flora": "flora",
 }
 
 
