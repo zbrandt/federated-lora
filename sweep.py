@@ -1,52 +1,5 @@
 """
-Two controlled ablations over FFA-LoRA (see flora/lora_layer.py), each
-varying exactly one axis at a time so any accuracy trend can be attributed
-to that axis alone:
-
-1. `rank` sweep -- DP held constant (or off) across every run, `lora_rank`
-   (r_max, homogeneous across clients) varied between runs.
-2. `dp`   sweep -- rank held constant across every run, the shared per-client
-   DP epsilon varied between runs (including a `none` no-DP baseline point).
-3. `grid` sweep -- full rank x epsilon interaction grid (every combination,
-   not one axis at a time). Tests whether the accuracy-maximizing rank
-   SHIFTS as epsilon changes, which the two marginals above can't show:
-   each of those holds the other axis fixed at a single value, so a rank
-   effect that only appears at small epsilon (as DP noise-amplification
-   theory predicts -- optimal rank should move to SMALLER ranks as epsilon
-   shrinks, since noise added to B scales into the reconstructed update
-   alongside signal that a wider rank can't outrun) wouldn't show up there.
-
-Every run is a full flora.build(config) + server.run(), so this is exactly
-as expensive as running main.py that many times -- there is no shortcut.
-Run with --smoke first to confirm plumbing before committing to a real
-(likely multi-hour, and for `grid`, likely multi-day) sweep.
-
-Usage
------
-    # fixed epsilon=4.0, rank in {2,4,6,8}, 2 seeds each
-    uv run python sweep.py rank --dp-epsilon 4.0 --ranks 2 4 6 8 --seeds 42 43
-
-    # fixed rank=8, epsilon in {none, 1, 2, 4, 8}, 2 seeds each
-    uv run python sweep.py dp --rank 8 --epsilons none 1 2 4 8 --seeds 42 43
-
-    # both, with default sweep points
-    uv run python sweep.py both --seeds 42
-
-    # full rank x epsilon interaction grid, large logical batch split into
-    # GPU-memory-safe physical sub-batches under DP
-    uv run python sweep.py grid \
-        --ranks 2 4 8 16 32 64 --epsilons 1 2 4 8 --seeds 0 1 2 3 4 \
-        --batch-size 512 --max-physical-batch-size 16 --epochs 3
-
-    # fast plumbing check before a real sweep
-    uv run python sweep.py rank --smoke
-
-Each run's raw per-round JSON is cached to `results/sweep/<tag>.json` (same
-schema as `main.py run`, so `python main.py plot results/sweep` also works
-if you want per-round curves instead of the summary trend below) and
-skipped on a re-run unless `--force` is passed. A trend plot -- accuracy
-(mean of the last `--tail` rounds) vs. the swept variable, mean +/- std
-across seeds -- is written to `figures/sweep/`.
+Sweep experiments: systematically vary one or more hyperparameters and plot the resulting accuracy trends.
 """
 
 from __future__ import annotations
@@ -63,19 +16,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from flora import build
-from flora.config import GLUE_TASKS, Config
-from flora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
+from ffalora import build
+from ffalora.config import GLUE_TASKS, Config
+from ffalora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
 
-
+# Parse a string token into a float or None (for "none" or "None").
 def _parse_epsilon(token: str) -> float | None:
     return None if token.strip().lower() == "none" else float(token)
-
 
 def _fmt(value: float) -> str:
     return f"{value:g}"
 
-
+# Create a base configuration for a run.
 def _base_config(args: argparse.Namespace, seed: int) -> Config:
     config = Config(seed=seed, dataset_task=args.task)
     if args.smoke:
@@ -86,7 +38,7 @@ def _base_config(args: argparse.Namespace, seed: int) -> Config:
         config = replace(config, num_clients=args.num_clients)
     return config
 
-
+# Run a single experiment with the given configuration.
 def _run_one(config: Config, tag: str, results_dir: Path, force: bool) -> dict:
     path = results_dir / f"{tag}.json"
     if path.exists() and not force:
@@ -99,17 +51,19 @@ def _run_one(config: Config, tag: str, results_dir: Path, force: bool) -> dict:
     result = {"config": asdict(config), "history": [asdict(metric) for metric in history]}
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    tmp_path = path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    tmp_path.replace(path)  # atomic on POSIX and Windows -- never leaves a truncated result file
     print(f"[sweep] {tag}: wrote {path}")
     return result
 
-
+# Calculate the final accuracy of a run based on the last `tail` rounds.
 def _final_accuracy(result: dict, tail: int) -> float:
     history = result["history"]
     window = history[-tail:] if len(history) >= tail else history
     return sum(entry["accuracy"] for entry in window) / len(window)
 
-
+# Run a sweep over different ranks.
 def run_rank_sweep(args: argparse.Namespace) -> list[tuple[int, int, dict]]:
     """Fixed DP (or no DP) held constant; r_max varied homogeneously between runs."""
     runs: list[tuple[int, int, dict]] = []
@@ -133,9 +87,9 @@ def run_rank_sweep(args: argparse.Namespace) -> list[tuple[int, int, dict]]:
 
     return runs
 
-
+# Run a sweep over different DP epsilon values.
 def run_dp_sweep(args: argparse.Namespace) -> list[tuple[float | None, int, dict]]:
-    """Rank held constant (or, with --auto-rank, chosen per epsilon by flora.rank_rule); the
+    """Rank held constant (or, with --auto-rank, chosen per epsilon by ffalora.rank_rule); the
     shared per-client DP epsilon varied between runs."""
     runs: list[tuple[float | None, int, dict]] = []
 
@@ -168,14 +122,8 @@ def run_dp_sweep(args: argparse.Namespace) -> list[tuple[float | None, int, dict
 
     return runs
 
-
+# Run a sweep over a grid of different ranks and DP epsilon values.
 def run_grid_sweep(args: argparse.Namespace) -> list[tuple[int, float | None, int, dict]]:
-    """
-    Full rank x epsilon grid -- every combination, not one axis at a time.
-    Unlike `rank`/`dp` above, this can reveal an INTERACTION: whether the
-    accuracy-maximizing rank shifts as epsilon changes, rather than just the
-    two independent main effects.
-    """
     runs: list[tuple[int, float | None, int, dict]] = []
 
     overrides: dict = {}
@@ -213,7 +161,7 @@ def run_grid_sweep(args: argparse.Namespace) -> list[tuple[int, float | None, in
 
     return runs
 
-
+# Aggregate runs by a common parameter x and compute mean/std accuracy.
 def _aggregate_by_x(runs: list[tuple], tail: int) -> tuple[list, list[float], list[float]]:
     """Group (x, seed, result) triples by x; mean/std final accuracy across seeds."""
     by_x: dict = defaultdict(list)
@@ -225,7 +173,7 @@ def _aggregate_by_x(runs: list[tuple], tail: int) -> tuple[list, list[float], li
     stds = [float(np.std(by_x[x])) for x in xs]
     return xs, means, stds
 
-
+# Plot the trend of accuracy as a function of LoRA rank.
 def plot_rank_trend(runs: list[tuple[int, int, dict]], tail: int, output_path: Path) -> None:
     xs, means, stds = _aggregate_by_x(runs, tail)
 
@@ -242,13 +190,11 @@ def plot_rank_trend(runs: list[tuple[int, int, dict]], tail: int, output_path: P
     plt.close()
     print(f"[sweep] wrote {output_path}")
 
-
+# Plot the trend of accuracy as a function of DP epsilon.
 def plot_dp_trend(runs: list[tuple[float | None, int, dict]], tail: int, output_path: Path) -> None:
     xs, means, stds = _aggregate_by_x(runs, tail)
 
-    # Split the no-DP baseline (x is None) out from the real epsilon values
-    # so it can be drawn as a flat reference line instead of distorting a
-    # log-scale x-axis.
+    # If the no-DP point is present, plot it as a horizontal dashed line at its mean accuracy, and plot the DP points with error bars.
     baseline = None
     plot_xs, plot_means, plot_stds = [], [], []
     for x, mean, std in zip(xs, means, stds):
@@ -278,12 +224,8 @@ def plot_dp_trend(runs: list[tuple[float | None, int, dict]], tail: int, output_
     plt.close()
     print(f"[sweep] wrote {output_path}")
 
-
+# Plot the trend of accuracy as a function of LoRA rank for each DP epsilon value.
 def plot_grid_trend(runs: list[tuple[int, float | None, int, dict]], tail: int, output_path: Path) -> None:
-    """One accuracy-vs-rank line per epsilon value -- if optimal rank shifts
-    with epsilon (the interaction this sweep exists to test), each line's
-    peak sits at a different x position rather than all lines peaking at
-    the same rank."""
     by_eps: dict = defaultdict(lambda: defaultdict(list))
     for rank, eps, _seed, result in runs:
         by_eps[eps][rank].append(_final_accuracy(result, tail))
@@ -318,7 +260,7 @@ def plot_grid_trend(runs: list[tuple[int, float | None, int, dict]], tail: int, 
     plt.close()
     print(f"\n[sweep] wrote {output_path}")
 
-
+# Add common arguments to a subparser.
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
     parser.add_argument("--task", choices=list(GLUE_TASKS), default="sst2")
@@ -331,7 +273,7 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--tail", type=int, default=5, help="rounds averaged into each 'final accuracy' point")
     parser.add_argument("--force", action="store_true", help="re-run even if a cached result file already exists")
 
-
+# Main entry point for the sweep script.
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="sweep", required=True)
@@ -348,7 +290,7 @@ def main() -> None:
                        help="ignored when --auto-rank is set")
     dp_p.add_argument("--epsilons", type=_parse_epsilon, nargs="+", default=[None, 1.0, 2.0, 4.0, 8.0])
     dp_p.add_argument("--auto-rank", action="store_true",
-                       help="pick lora_rank per epsilon via flora.rank_rule.recommended_rank instead of "
+                       help="pick lora_rank per epsilon via ffalora.rank_rule.recommended_rank instead of "
                             "using a fixed --rank for every point")
     dp_p.add_argument("--candidate-ranks", type=int, nargs="+", default=[2, 4, 6, 8],
                        help="ranks recommended_rank chooses among when --auto-rank is set")

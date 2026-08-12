@@ -1,3 +1,9 @@
+"""
+Each Client trains its own slice of data for one round.
+It only ever trains the small LoRA B matrix and the classifier head, optionally
+adding DP noise (via Opacus) so no single training example can be traced back.
+"""
+
 from __future__ import annotations
 
 import math
@@ -10,10 +16,11 @@ from torch.optim import AdamW, Optimizer
 from torch.utils.data import DataLoader
 from transformers import DataCollatorWithPadding, PreTrainedModel
 
-from flora.config import Config
-from flora.lora_layer import HeterogeneousDPLoRALayer
+from ffalora.config import Config
+from ffalora.lora_layer import HeterogeneousDPLoRALayer
 
 
+# Everything a client hands back to the server after one round of training.
 @dataclass(slots=True)
 class ClientResult:
 	state_dict: dict[str, torch.Tensor]
@@ -25,6 +32,7 @@ class ClientResult:
 
 
 class Client:
+	# Store this client's data, device, and settings; DP state is filled in lazily on first use.
 	def __init__(
 			self,
 			client_id: int,
@@ -45,26 +53,8 @@ class Client:
 		self._privacy_engine = None             # lazily created once, reused every round so epsilon composes across rounds
 		self._sigma = None                      # noise multiplier derived from target_epsilon; computed once, cached
 
+	# Train this client's copy of the model for one round, with or without DP, and package up the result.
 	def local_update(self, model: PreTrainedModel, adapter_state: dict[str, torch.Tensor]) -> ClientResult:
-		"""
-		Perform a local client update under FFA-LoRA (Frozen-A LoRA, see
-		lora_layer.py): only `B` (per LoRA layer) and the classifier head are
-		ever trained. The shared `A_max` is frozen and never appears here --
-		not in `adapter_state`, not in the optimizer, not in DP clipping/noise.
-
-		Parameters
-		----------
-		model : PreTrainedModel
-			Model with HeterogeneousDPLoRALayer adapters injected.
-		adapter_state : dict[str, torch.Tensor]
-			The global `B` (per layer) and classifier head state to train
-			from this round.
-
-		Returns
-		-------
-		ClientResult
-			The client's updated state plus loss/example/privacy bookkeeping.
-		"""
 		model.load_state_dict(adapter_state, strict=False)
 		model.train()
 
@@ -98,13 +88,8 @@ class Client:
 			total_loss, steps_taken = self._local_update_plain(model, optimizer, train_dataloader)
 			epsilon_spent = None
 
-		# See lora_layer.py's docstring: zero-padding the forward pass alone
-		# is NOT sufficient to keep inactive columns (rank r_i..r_max) at
-		# zero once DP noise is involved -- Opacus's noise is added to the
-		# whole gradient tensor unconditionally, regardless of whether the
-		# true gradient there happens to be zero. So those columns are
-		# explicitly reset here, on every path (DP or not, for consistency),
-		# before the state is extracted for upload.
+		# DP noise gets added to every column of B, even the inactive ones (rank r_i..r_max),
+		# so they have to be zeroed out again here before the update is sent to the server.
 		with torch.no_grad():
 			for layer in lora_layers:
 				if self.rank < layer.r_max:
@@ -125,6 +110,7 @@ class Client:
 			epsilon_spent=epsilon_spent,
 		)
 
+	# Run ordinary (non-private) training for this client's local steps or epochs.
 	def _local_update_plain(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, int]:
 		total_loss = 0.0
 		steps_taken = 0
@@ -155,28 +141,8 @@ class Client:
 
 		return total_loss, steps_taken
 
+	# Run training with DP-SGD (via Opacus): clip and noise every gradient step so no example leaks.
 	def _local_update_dp(self, model: PreTrainedModel, optimizer: Optimizer, train_dataloader: DataLoader) -> tuple[float, float, int]:
-		"""
-		Train B (+ classifier head) under Opacus per-example DP-SGD.
-
-		Flat clipping across B + head combined (NOT per-layer clipping --
-		Opacus's `DPPerLayerOptimizer` collapses a list of per-layer clip
-		norms into a single *aggregate* L2 value and uses that much larger
-		number to scale the noise added to every parameter, which silently
-		inflates the injected noise -- a real bug hit and reverted in an
-		earlier iteration of this codebase).
-
-		`A_max` is a buffer, not a parameter, so it never appears in
-		`optimizer` and is therefore never clipped, noised, or updated by
-		Opacus -- only `B` and the head are. This is what keeps the noise in
-		the reconstructed update `(B + noise) @ A` linear rather than
-		quadratic, unlike every previous (both-A-and-B-trainable) DP-FLoRA
-		attempt.
-
-		Each client keeps ONE `PrivacyEngine` for its whole lifetime, reused
-		every round so its accountant's epsilon composes correctly across
-		every round this client is actually selected for.
-		"""
 		from opacus import PrivacyEngine
 		from opacus.accountants.utils import get_noise_multiplier
 
@@ -186,16 +152,9 @@ class Client:
 		sample_rate = min(1.0, self.config.batch_size / len(self.dataset))
 
 		if self._sigma is None:
-			# A client's total future participation count isn't known in
-			# advance (depends on random per-round selection), so calibrate
-			# sigma against the EXPECTED total local steps across the whole
-			# run instead. A client selected more/less than this expectation
-			# will over/under-spend its nominal target_epsilon somewhat.
 			if self.config.local_epochs is not None:
-				# Epoch mode: "steps per epoch" depends on THIS client's own
-				# shard size, which varies under non-iid partitioning --
-				# unlike local_steps, this is not the same fixed number for
-				# every client.
+				# Shard sizes differ per client under non-iid partitioning, so
+				# "steps per epoch" has to be computed per client, not assumed fixed.
 				steps_per_epoch = math.ceil(len(self.dataset) / self.config.batch_size)
 				local_steps_equivalent = self.config.local_epochs * steps_per_epoch
 			else:
@@ -219,6 +178,7 @@ class Client:
 		total_loss = 0.0
 		steps_taken = 0
 
+		# Run one training batch and add its loss to the running total.
 		def _run_batch(batch: dict) -> None:
 			nonlocal total_loss, steps_taken
 			if batch["input_ids"].shape[0] == 0:
@@ -234,19 +194,6 @@ class Client:
 			steps_taken += 1
 
 		if self.config.local_epochs is not None:
-			# Epoch mode: one full pass over dp_loader is exactly one epoch
-			# (Opacus's Poisson-sampling loader has a fixed number of batches
-			# per pass -- ceil(len(dataset)/batch_size), matching
-			# steps_per_epoch above). BatchMemoryManager, if configured,
-			# splits each of those logical (possibly large) batches into
-			# GPU-memory-safe physical sub-batches, gradient-accumulating up
-			# to the logical batch before Opacus actually clips+noises+steps
-			# -- `dp_optimizer.step()` is still called once per physical
-			# sub-batch below, it's just a no-op except on the last one of
-			# each logical batch. Note this only counts PHYSICAL steps in
-			# `steps_taken` (used only for the average_loss denominator);
-			# `expected_total_steps` above is computed independently from
-			# LOGICAL steps, so DP accounting is unaffected either way.
 			for _ in range(self.config.local_epochs):
 				if self.config.max_physical_batch_size is not None:
 					from opacus.utils.batch_memory_manager import BatchMemoryManager

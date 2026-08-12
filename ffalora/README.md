@@ -1,10 +1,9 @@
-# FLoRA
+# FFA-LoRA
 
-FLoRA (**F**ederated **LoRA**) is a federated machine learning method for
-parameter-efficient fine-tuning with low-rank adaptation of large language
-models. It uses **FFA-LoRA** (Frozen-A LoRA): the low-rank update
-`ΔW = B @ A` keeps `A` frozen, shared, and identical across every client, and
-only ever trains `B`.
+FFA-LoRA (**F**rozen-**A** **LoRA**) is a federated machine learning method
+for parameter-efficient fine-tuning with low-rank adaptation of large
+language models. The low-rank update `ΔW = B @ A` keeps `A` frozen, shared,
+and identical across every client, and only ever trains `B`.
 
 Freezing `A` fixes two separate problems at once:
 
@@ -34,7 +33,7 @@ then per-layer clipping, then a hand-rolled client-level DP-SGD) all left
 accuracy pinned at exactly the majority-class baseline regardless of
 hyperparameters — this quadratic-noise mechanism is why.
 
-This project can simulate FLoRA on RoBERTa-base[^1] over the GLUE[^2]
+This project can simulate FFA-LoRA on RoBERTa-base[^1] over the GLUE[^2]
 benchmark, using LoRA adapters injected into the attention `query` and
 `value` projections.
 
@@ -108,7 +107,7 @@ A subset of the rest is exposed on the command line; the rest are edited in
 `config.py` directly:
 
 ````bash
-python main.py run --method flora --task sst2 --seed 42
+python main.py run --method ffalora --task sst2 --seed 42
 ````
 
 | flag                  | meaning                                                    |
@@ -122,21 +121,21 @@ python main.py run --method flora --task sst2 --seed 42
 
 ## Usage
 
-Run FLoRA on a task and seed (homogeneous rank, no DP unless `client_ranks`/
+Run FFA-LoRA on a task and seed (homogeneous rank, no DP unless `client_ranks`/
 `client_epsilons` are set in `config.py`); the run auto-saves to
 `results/<method>_<task>_seed<seed>.json`:
 
 ````bash
-python main.py run --method flora --task sst2 --seed 42
+python main.py run --method ffalora --task sst2 --seed 42
 ````
 
 Sweep a few seeds so the plotter can draw mean ±1 std bands, then plot from
-the repository root (this plots any `la_lora`/`flora` results found in the
+the repository root (this plots any `la_lora`/`ffalora` results found in the
 same directory together):
 
 ````bash
 for seed in 42 43 44; do
-    python main.py run --method flora --task sst2 --seed $seed
+    python main.py run --method ffalora --task sst2 --seed $seed
 done
 python main.py plot results/ --output-dir figures
 ````

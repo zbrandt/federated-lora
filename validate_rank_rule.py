@@ -1,18 +1,7 @@
 """
-Check flora.rank_rule.recommended_rank's predictions against the actual
-accuracy-maximizing rank observed in the grid sweep
-(results/sweep/grid_sweep_*.json) -- the ground truth the rule was only
-ever provisionally calibrated against a single anchor point plus one
-corroborating cell, per rank_rule.py's docstring.
-
-Meaningful once at least two ranks have `--min-seeds` completed runs at
-the same epsilon; safe to run against a partial grid sweep before it
-finishes -- epsilons without enough coverage yet are skipped and reported
-as such, not silently treated as a match.
-
-Usage:
-    uv run python validate_rank_rule.py
-    uv run python validate_rank_rule.py --min-seeds 3   # peek early, noisier
+Validate the rank recommendation rule against a grid sweep of ranks and DP epsilon values.
+The rule is considered valid if it correctly predicts the accuracy-maximizing rank for each epsilon value
+in the grid sweep, given the same candidate ranks that were actually measured in the sweep.
 """
 from __future__ import annotations
 
@@ -21,16 +10,16 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from flora.config import Config
-from flora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
+from ffalora.config import Config
+from ffalora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
 
-
+# Computes the final accuracy of a run by averaging the last `tail` rounds of its accuracy history.
 def _final_accuracy(result: dict, tail: int) -> float:
     history = result["history"]
     window = history[-tail:] if len(history) >= tail else history
     return sum(entry["accuracy"] for entry in window) / len(window)
 
-
+# Loads the grid sweep results from JSON files and organizes them by DP epsilon and LoRA rank.
 def load_grid(results_dir: Path, tail: int) -> dict[float, dict[int, list[float]]]:
     """{epsilon: {rank: [final_accuracy per seed]}} read straight from the grid sweep's own output files."""
     by_eps_rank: dict[float, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -43,7 +32,7 @@ def load_grid(results_dir: Path, tail: int) -> dict[float, dict[int, list[float]
         by_eps_rank[eps][rank].append(_final_accuracy(result, tail))
     return by_eps_rank
 
-
+# Validates the rank recommendation rule against the grid sweep results.
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tail", type=int, default=5, help="rounds averaged into each run's final accuracy")

@@ -1,18 +1,3 @@
-"""Plot accuracy-by-round curves from la_lora run results.
-
-Each run writes a JSON file (see ``la_lora.run``) containing its ``config`` and a
-per-round ``history``. This script reads a set of those files, groups them by
-GLUE task and by method, averages across seeds, and writes one
-accuracy-by-round figure per task with the methods overlaid and a mean +/- std
-band shaded across seeds.
-
-Usage::
-
-    python plot_results.py                     # reads results/, writes figures/
-    python plot_results.py results --output-dir figures
-    python plot_results.py results/lalora_sst2_seed42.json ...
-"""
-
 from __future__ import annotations
 
 import json
@@ -23,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 
-matplotlib.use("Agg")  # sets rendering engine to a non-interactive, headless backend to prevent GUI pop-ups
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
@@ -37,19 +22,6 @@ class Run:
 
 
 def _iter_json_paths(inputs: list[str] | str) -> list[Path]:
-    """
-    Expand files and directories into a flat, sorted list of JSON paths.
-
-    Parameters
-    ----------
-    inputs : list[str] | str
-        TODO
-    
-    Returns
-    -------
-    list[Path]
-        TODO
-    """
     if isinstance(inputs, (str, Path)):
         inputs = [inputs]
     paths: list[Path] = []
@@ -63,19 +35,6 @@ def _iter_json_paths(inputs: list[str] | str) -> list[Path]:
 
 
 def load_run(path: Path) -> Run:
-    """
-    Loads a run from a given path and returns data as a Run object.
-
-    Parameters
-    ----------
-    path : Path
-        A Path object to a run's JSON output.
-
-    Returns
-    -------
-    Run
-        A Run object with method, task, seed, rounds, and accuracy information.
-    """
     payload = json.loads(path.read_text(encoding="utf-8"))
     config = payload.get("config", {})
     history = payload.get("history", [])
@@ -89,24 +48,6 @@ def load_run(path: Path) -> Run:
 
 
 def _aggregate_over_seeds(runs: list[Run]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Mean and standard deviation of accuracy per round across given runs (seeds) 
-    for the same method and task.
-
-    Runs are aligned to the shortest history so a truncated run can't misalign
-    the average.
-
-    Parameters
-    ----------
-    runs : list[Run]
-        A list of Run objects with method, task, seed, rounds, and accuracy
-        information.
-
-    Returns
-    -------
-    tuple[np.ndarray, np.ndarray, np.ndarry]
-        A tuple of numpy arrays  
-    """
     n_rounds = min(len(run.accuracy) for run in runs)
     rounds = np.asarray(runs[0].rounds[:n_rounds])
     stacked = np.asarray([run.accuracy[:n_rounds] for run in runs])
@@ -136,34 +77,17 @@ def _plot_task(task: str, method_runs: dict[str, list[Run]], colors: dict[str, s
 
 
 def plot(inputs: list[str] | str = "results", output_dir: str = "figures") -> list[Path]:
-    """
-    Load runs from inputs and write one accuracy against round figure per task.
-
-    Parameters
-    ----------
-    inputs : list[str] | str
-        TODO
-    output_dir : str
-        TODO
-
-    Returns
-    -------
-    list[Path]
-        TODO
-    """
     paths = _iter_json_paths(inputs)
     if not paths:
         raise SystemExit(f"No result JSON files found in: {inputs}")
 
     runs = [load_run(p) for p in paths]
 
-    # One stable color per method, shared across every task figure.
     methods = sorted({run.method for run in runs})
     cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     colors = {method: cycle[i % len(cycle)] for i, method in enumerate(methods)}
 
-    # grouped indexed by task, then method, with runs across seeds as values
-    grouped: dict[str, dict[str, list[Run]]] = defaultdict(lambda: defaultdict(list))   # lambda runs and automatically creates a new inner defaultdict as the value
+    grouped: dict[str, dict[str, list[Run]]] = defaultdict(lambda: defaultdict(list))
     for run in runs:
         grouped[run.task][run.method].append(run)
 
