@@ -6,6 +6,7 @@ import torch
 from opacus import PrivacyEngine
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import ExponentialLR
 from transformers import PreTrainedModel
 
 from federated_lora.data import cycle
@@ -20,6 +21,7 @@ class Client:
 		model: PreTrainedModel,
 		dataloader: DataLoader,
 		optimizer: Optimizer,
+		scheduler: ExponentialLR,
 		privacy_engine: PrivacyEngine,
 		num_examples: float,
 		steps: int,
@@ -29,6 +31,7 @@ class Client:
 		self.model = model
 		self.dataloader = dataloader
 		self.optimizer = optimizer
+		self.scheduler = scheduler
 		self.privacy_engine = privacy_engine
 		self.num_examples = num_examples
 		self.steps = steps

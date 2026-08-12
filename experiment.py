@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from torch.optim.lr_scheduler import ExponentialLR
 from opacus import PrivacyEngine
 from torch.optim import SGD
 
@@ -26,11 +27,11 @@ def parse_args():
 
 	parser.add_argument('--task', type=str, required=True)
 	parser.add_argument('--method', type=str, required=True)
-	parser.add_argument('--batch-size', type=int, default=64)
+	parser.add_argument('--batch-size', type=int, default=16)
 	parser.add_argument('--epsilon', type=float, default=3.0)
-	parser.add_argument('--lr-a', type=float, default=0.25)
-	parser.add_argument('--lr-b', type=float, default=0.25)
-	parser.add_argument('--lr-head', type=float, default=0.15)
+	parser.add_argument('--lr-a', type=float, default=0.20)
+	parser.add_argument('--lr-b', type=float, default=0.20)
+	parser.add_argument('--lr-head', type=float, default=0.20)
 	parser.add_argument('--seed', type=int, default=42)
 	parser.add_argument('--output-dir', type=str, default='results/')
 
@@ -91,10 +92,9 @@ def build(config: Config) -> Server:
 				{'params': params_B, 'lr': config.lr_b},
 				{'params': params_head, 'lr': config.lr_head},
 			],
-			weight_decay=0.0,
 		)
 
-		sigma = compute_noise_level(
+		noise_multiplier = compute_noise_level(
 			num_examples=num_examples,
 			batch_size=config.batch_size,
 			global_rounds=config.global_rounds,
@@ -108,9 +108,11 @@ def build(config: Config) -> Server:
 			module=local_model,
 			optimizer=optimizer,
 			data_loader=dataloader,
-			noise_multiplier=sigma,
-			max_grad_norm=config.clip_norm,
+			noise_multiplier=noise_multiplier,
+			max_grad_norm=config.max_grad_norm,
 		)
+
+		scheduler = ExponentialLR(optimizer, gamma=config.lr_decay)
 
 		clients.append(
 			Client(
@@ -118,6 +120,7 @@ def build(config: Config) -> Server:
 				model=local_model,
 				dataloader=dataloader,
 				optimizer=optimizer,
+				scheduler=scheduler,
 				privacy_engine=privacy_engine,
 				num_examples=num_examples,
 				steps=config.local_steps,
@@ -130,7 +133,7 @@ def build(config: Config) -> Server:
 		method=method,
 		rounds=config.global_rounds,
 		clients=clients,
-		max_grad_norm=config.clip_norm,
+		sample_rate=config.client_sample_rate,
 		test_dataloader=test_dataloader,
 		device=device,
 		seed=config.seed,
@@ -146,6 +149,7 @@ def run(args: list[str]) -> dict:
 		target_epsilon=args.epsilon,
 		lr_a=args.lr_a,
 		lr_b=args.lr_b,
+		lr_head=args.lr_head,
 		seed=args.seed,
 		output_dir=args.output_dir,
 	)

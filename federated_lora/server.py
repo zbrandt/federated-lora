@@ -21,7 +21,7 @@ class Server:
 		method: Method,
 		rounds: int,
 		clients: list[Client],
-		max_grad_norm: float,
+		sample_rate: float,
 		test_dataloader: DataLoader,
 		device: str,
 		seed: int,
@@ -30,7 +30,7 @@ class Server:
 		self.method = method
 		self.rounds = rounds
 		self.clients = clients
-		self.max_grad_norm = max_grad_norm
+		self.sample_rate = sample_rate
 		self.test_dataloader = test_dataloader
 		self.device = device
 		self.seed = seed
@@ -71,21 +71,24 @@ class Server:
 		history = []
 		rng = random.Random(self.seed)
 
-		for round in range(1, self.rounds + 1):
-			# select clients samples ALL clients
-			indices = rng.sample(range(len(self.clients)), len(self.clients))
+		for r in range(1, self.rounds + 1):
+
+			# select clients
+			k = max(1, round(self.sample_rate * len(self.clients)))
+			indices = rng.sample(range(len(self.clients)), k)
 			selected = [self.clients[i] for i in indices]
 
 			t0 = time.perf_counter()
 			uploads, losses = [], []
 			for client in selected:
+
 				# broadcast model weights
 				global_state = get_trainable_state(self.model)
 				load_trainable_state(client.model, global_state)
 
 				# compute local client uploads
 				upload, loss = client.local_update(
-					round=round, method=self.method
+					round=r, method=self.method
 				)
 
 				uploads.append(upload)
@@ -94,8 +97,12 @@ class Server:
 			# aggregate client uploads into the new global state
 			num_examples = [client.num_examples for client in selected]
 			agg = self.method.aggregate(
-				uploads=uploads, num_examples=num_examples, round=round
+				uploads=uploads, num_examples=num_examples
 			)
+
+			# decay learning rates
+			for client in self.clients:
+				client.scheduler.step()
 
 			# update the global model with the aggregated weights
 			load_trainable_state(self.model, agg)
@@ -109,7 +116,7 @@ class Server:
 			t2 = time.perf_counter()
 
 			metrics = {
-				'round_index': round,
+				'round_index': r,
 				'train_loss': sum(losses) / max(1, len(losses)),
 				'test_loss': test_loss,
 				'top1_acc': top1_acc,
@@ -119,7 +126,7 @@ class Server:
 			history.append(metrics)
 
 			print(
-				f'[{self.method.name} round {round}/{self.rounds}] '
+				f'[{self.method.name} round {r}/{self.rounds}] '
 				f'train_loss={metrics["train_loss"]:.4f} '
 				f'test_loss={metrics["test_loss"]:.4f} '
 				f'top1_acc={metrics["top1_acc"]:.4f} '
