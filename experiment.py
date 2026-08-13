@@ -52,6 +52,8 @@ def build(config: Config) -> Server:
 
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+	method = get_method(config.method)
+
 	model = create_peft_model(
 		name=config.model,
 		num_labels=config.num_labels,
@@ -59,10 +61,9 @@ def build(config: Config) -> Server:
 		target_modules=config.target_modules,
 		lora_alpha=config.lora_alpha,
 		lora_dropout=config.lora_dropout,
+		method=method,
 		device=device,
 	)
-
-	method = get_method(config.method)
 
 	data_dir = load_datasets(
 		name=config.dataset,
