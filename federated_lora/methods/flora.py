@@ -27,43 +27,94 @@ class FLoRA:
 		self,
 		uploads: list[dict[str, torch.Tensor]],
 		num_examples: list[int],
-	) -> dict[str, torch.Tensor]:
+	) -> tuple[dict[int, dict[str, torch.Tensor]], dict[str, torch.Tensor]]:
 		# TODO: implement FLoRA aggregation
-		return Server.fedavg(uploads, num_examples)
-		# total = float(sum(num_examples))
-		# weights = [n / total for n in num_examples]
-		# keys = uploads[0].keys()
+		# return Server.fedavg(uploads, num_examples)
+		total = sum(num_examples.values())
+		weights = {cid: n / total for cid, n in num_examples.items()}
+		
+		param_names = next(iter(uploads.values())).keys()
+		aggregated: dict[str, torch.Tensor] = {}
 
-		# a_suffix, b_suffix = ".A.weight", ".B.weight"
-		# prefixes = {key[: -len(a_suffix)] for key in keys if key.endswith(a_suffix)}
-		# aggregated: dict[str, torch.Tensor] = {}
+		for name in param_names:
+			if 'lora_A' in name:
+				# scale each client A by FedAvg weight and then stack along rank dimension
+				scaled = [
+					upload[name] * weights[cid] for cid, upload in uploads.items()
+				]
+				aggregated[name] = torch.cat(scaled, dim=0)
+			elif "lora_B" in name:
+				# unweighted so B_stack @ A_stack = sum_k{w_k*(B_k @ A_k)}
+				unscaled = [upload[name] for upload in uploads.values()]
+				aggregated[name] = torch.cat(unscaled, dim=1)
+			else:
+				# handles non lora_A or lora_B, instead probably classifier head 
+				# for anything else (classifier head) we just want to do fedavg
+				reference = next(iter(uploads.values()))[name]
+				accumulator = torch.zeros_like(reference, dtype=torch.float32)
+				for cid, upload in uploads.items():
+					accumulator += upload[name].to(torch.float32) * weights[cid]
+					aggregated[name] = accumulator.to(reference.dtype)
+		return {cid: aggregated for cid in uploads}, aggregated
+	
+	def redistribute(
+			self, 
+			server_model: nn.Module,
+			per_client_state: dict[int, dict[str, torch.Tensor]],
+			uploads: dict[int, dict[str, torch.Tensor]], 
+			) -> tuple[dict[int, dict[str, torch.Tensor]], dict[str, torch.Tensor]]:
+			stacked = next(iter(per_client_state.values()))
+			base_state = get_base_state(server_model)
+			
+			merged_base: dict[str, torch.Tensor] = {}
+			# TODO: reinit clientside
+			fresh_adapters: dict[int, dict[str, torch.Tensor]] = {cid: {} for cid in uploads}
+			# what is eval adapter
+			eval_adapter: dict[str, torch.Tensor] = {}
 
-		# for prefix in prefixes:
-		#     a_key, b_key = prefix + a_suffix, prefix + b_suffix
-		#     rank = uploads[0][a_key].shape[0]
+			for a_key in [key for key in stacked if "lora_A" in key]:
+				b_key = a_key.replace('lora_A', 'lora_B')
+				base_key = a_key.replace('.lora_A.default.weight', ".base_layer.weight")
 
-		#     a_stack = torch.cat([upload[a_key].to(torch.float32) for upload in uploads], dim=0)
-		#     b_stack = torch.cat(
-		#         [upload[b_key].to(torch.float32) * weight for upload, weight in zip(uploads, weights)], dim=1
-		#     )
-		#     delta_w = b_stack @ a_stack
+				# merge the stacked delta into base
+				delta_w = stacked[b_key] @ stacked[a_key]
+				merged_base[base_key] = base_state[base_key] + delta_w
 
-		#     U, S, Vt = torch.linalg.svd(delta_w, full_matrices=False)
-		#     sqrt_s = S[:rank].clamp_min(0).sqrt()
-		#     new_b = U[:, :rank] * sqrt_s.unsqueeze(0)
-		#     new_a = sqrt_s.unsqueeze(1) * Vt[:rank, :]
+				# n = in features
+				# m = out features
+				n = stacked[a_key].shape[1]
+				m = stacked[b_key].shape[0]
+				# fresh, small adapter per client
+				# read off the shape of their upload
 
-		#     ref_a, ref_b = uploads[0][a_key], uploads[0][b_key]
-		#     aggregated[a_key] = new_a.to(dtype=ref_a.dtype, device=ref_a.device)
-		#     aggregated[b_key] = new_b.to(dtype=ref_b.dtype, device=ref_b.device)
+				for cid, upload in uploads.items():
+					rank = upload[a_key].shape[0]
+					# new initalized a, b
+					# TODO: make this client side later
+					# TODO: use peft model instead of empty A, B 
+					# The problem is that if i want to do that i need to reinitalize in place on a live model
+					# that means that i would have to pass the client.model objects in
+					# so i will come back to this later
+					new_a = torch.empty(rank, n)
+					nn.init.kaiming_uniform_(new_a, a=5 **0.5)
+					new_b = torch.zeros(m, rank)
+					fresh_adapters[cid][a_key] = new_a
+					fresh_adapters[cid][b_key] = new_b
+				# eval model - prolly also have to do it with peft .... muss mal schauen
+				# eval model is W_1, W_2, ..., W_n
+				eval_rank = max(upload[a_key].shape[0] for upload in uploads.values())
+				eval_a = torch.empty(eval_rank, n)
+				nn.init.kaiming_uniform_(eval_a, a=5 **0.5)
+				eval_adapter[a_key] = eval_a
+				eval_adapter[b_key] = torch.zeros(m, eval_rank)
+			# ferda classifier
+			non_lora = {k: v for k, v in stacked.items() if "lora_" not in k}
+			per_client = {
+				cid: {**merged_base, **fresh_adapters[cid], **non_lora}
+				for cid in uploads
+			}
+			eval_state = {**merged_base, **eval_adapter, **non_lora}
 
-		# for key in keys:
-		#     if key.endswith(a_suffix) or key.endswith(b_suffix):
-		#         continue
-		#     reference = uploads[0][key]
-		#     accumulator = torch.zeros_like(reference, dtype=torch.float32)
-		#     for upload, weight in zip(uploads, weights):
-		#         accumulator += upload[key].to(torch.float32) * weight
-		#     aggregated[key] = accumulator.to(dtype=reference.dtype, device=reference.device)
+			return per_client, eval_state
 
-		# return aggregated
+						

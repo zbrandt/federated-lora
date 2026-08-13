@@ -109,7 +109,13 @@ class Server:
 			# agg = self.method.aggregate(
 			# 	uploads=uploads, num_examples=num_examples, round=round
 			# )
-
+			redistribute = getattr(self.method, 'redistribute', None)
+			if redistribute is not None:
+				self.per_client_state, eval_state = redistribute(
+					server_model=self.model,
+					per_client_state = self.per_client_state,
+					uploads = uploads,
+				)
 			# update the global model with the aggregated weights
 			load_trainable_state(self.model, eval_state)
 

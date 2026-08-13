@@ -58,7 +58,7 @@ def build(config: Config) -> Server:
 	model = create_peft_model(
 		name=config.model,
 		num_labels=config.num_labels,
-		lora_rank=eval_rank
+		lora_rank=eval_rank,
 		target_modules=config.target_modules,
 		lora_alpha=config.lora_alpha,
 		lora_dropout=config.lora_dropout,
@@ -86,7 +86,7 @@ def build(config: Config) -> Server:
 		# if not, use the default lora_rank from config
 		if config.client_ranks:
 			lora_rank = config.client_ranks[i]
-			local_model = copy.create_peft_model(
+			local_model = create_peft_model(
 				name=config.model,
 				num_labels=config.num_labels,
 				lora_rank=lora_rank,

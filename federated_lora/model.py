@@ -117,6 +117,19 @@ def get_trainable_state(model: nn.Module) -> dict[str, torch.Tensor]:
 	}
 
 
+# for every lora adapted module, get the frozen base-layer
+def get_base_state(model: nn.Module) -> dict[str, torch.Tensor]:
+	"""
+	Get the frozen base-layer weights for every LoRA- adapted module. 
+	"""
+	target = unwrap(model)
+	trainable = get_trainable_parameters(target)
+	return {
+		key: value.detach().cpu().clone()
+		for key, value in target.state_dict().items()
+		if key not in trainable and 'base_layer' in key
+	}
+
 def load_trainable_state(
 	model: nn.Module, state: dict[str, torch.Tensor]
 ) -> None:
