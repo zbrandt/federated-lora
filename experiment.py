@@ -34,6 +34,7 @@ def parse_args():
 	parser.add_argument('--lr-head', type=float, default=0.20)
 	parser.add_argument('--seed', type=int, default=42)
 	parser.add_argument('--output-dir', type=str, default='results/')
+	parser.add_argument('--global-rounds', type=int, default=None)
 
 	return parser.parse_args()
 
@@ -154,17 +155,23 @@ def run(args: list[str]) -> dict:
 		seed=args.seed,
 		output_dir=args.output_dir,
 	)
+	if args.global_rounds is not None:
+		config.global_rounds = args.global_rounds
 	server = build(config)
 	history = server.run()
 	result = {'config': asdict(config), 'history': history}
 
-	epsilons = []
-	for client in server.clients:
-		privacy_engine = client.privacy_engine
-		epsilons.append(privacy_engine.get_epsilon(config.target_delta))
-
-	# TODO: add more metrics
-	result['epsilon_breakdown'] = {'per_client': epsilons}
+	# # The manual DP pipeline (privatize) bypasses DPOptimizer.step(), so
+	# # Opacus's accountant is never advanced and get_epsilon() crashes on an
+	# # empty history (PRV divide-by-zero -> NaN). sigma was pre-computed by
+	# # compute_noise_level to satisfy the target epsilon, so report that.
+	# result['epsilon_breakdown'] = {
+	# 	'per_client': [config.target_epsilon] * len(server.clients),
+	# 	'note': (
+	# 		'target epsilon; sigma precomputed to satisfy it '
+	# 		'(manual DP pipeline does not advance the Opacus accountant)'
+	# 	),
+	# }
 
 	path = (
 		Path(config.output_dir)
