@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
-from federated_lora.server import Server
 from federated_lora.privacy import privatize, zero_grad
+from federated_lora.server import Server
 
 
 class RoLoRA:
@@ -30,9 +30,7 @@ class RoLoRA:
 		for name, parameter in model.named_parameters():
 			if parameter.grad is None:
 				continue
-			if round % 2 == 0 and 'lora_B' in name:
-				parameter.grad.zero_()
-			elif round % 2 == 1 and 'lora_A' in name:
+			if (round % 2 == 0 and 'lora_B' in name) or (round % 2 == 1 and 'lora_A' in name):
 				parameter.grad.zero_()
 
 		optimizer.original_optimizer.step()

@@ -3,8 +3,8 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from opacus import GradSampleModule
-from opacus.optimizers import DPOptimizer
 from opacus.accountants.utils import get_noise_multiplier
+from opacus.optimizers import DPOptimizer
 
 
 def compute_noise_level(
@@ -64,11 +64,11 @@ def privatize(
 	"""
 	Clip per sample gradients and add Gaussian noise.
 
-	Aggregate ``p.grad_sample`` over all parameters to calculate per sample 
-	norms. Clip ``p.grad_sample`` so that per sample norm is not above 
-	threshold. Aggregate clipped per sample gradients into ``p.summed_grad``. 
-	Add Gaussian noise to ``p.summed_grad`` calibrated to a given noise 
-	multiplier and per-layer median clipping threshold. Divide gradients by 
+	Aggregate ``p.grad_sample`` over all parameters to calculate per sample
+	norms. Clip ``p.grad_sample`` so that per sample norm is not above
+	threshold. Aggregate clipped per sample gradients into ``p.summed_grad``.
+	Add Gaussian noise to ``p.summed_grad`` calibrated to a given noise
+	multiplier and per-layer median clipping threshold. Divide gradients by
 	``expected_batch_size`` into ``p.grad``.
 
 	Parameters
@@ -76,9 +76,9 @@ def privatize(
 	model : GradSampleModule
 		The wrapped model carrying per-example gradients.
 	optimizer : DPOptimizer
-		The wrapped optimizer carrying the noise multiplier and expected batch 
+		The wrapped optimizer carrying the noise multiplier and expected batch
 		size.
-	
+
 	Returns
 	-------
 	list[nn.Parameter] | None
@@ -89,8 +89,8 @@ def privatize(
 		if p.requires_grad and getattr(p, 'grad_sample', None) is not None:
 			params.append(p)
 
-	if not params: 
-		optimizer.zero_grad() 
+	if not params:
+		optimizer.zero_grad()
 		return
 
 	thresholds = clip_and_accumulate(params)
@@ -98,12 +98,12 @@ def privatize(
 	scale_grad(params, optimizer.expected_batch_size)
 
 	return params
-	
+
 
 def clip_and_accumulate(
 		params: list[nn.Parameter]
 	) -> dict[nn.Parameter, float]:
-	""" 
+	"""
 	Perform gradient clipping on a per-layer basis using median clipping.
 
 	Parameters
@@ -124,7 +124,7 @@ def clip_and_accumulate(
 		# get per-example gradient norms
 		norms = grad_sample.reshape(len(grad_sample), -1).norm(2, dim=-1)
 
-		# set clipping threshold to median of gradient norm distribution 
+		# set clipping threshold to median of gradient norm distribution
 		c = norms.median().clamp(min=1e-6)
 
 		# scale down norms greater than the threshold, leave the rest alone
@@ -139,11 +139,11 @@ def clip_and_accumulate(
 
 
 def add_noise(
-		thresholds: dict[nn.Parameter, float], 
-		noise_multiplier: float, 
+		thresholds: dict[nn.Parameter, float],
+		noise_multiplier: float,
 	) -> None:
 	"""
-	Adds noise to clipped gradients. Stores clipped and noised result in 
+	Adds noise to clipped gradients. Stores clipped and noised result in
 	``p.summed_grad``.
 
 	Parameters
@@ -156,21 +156,21 @@ def add_noise(
 	for p, c in thresholds.items():
 		if noise_multiplier > 0:
 			p.summed_grad = p.summed_grad + torch.normal(
-				mean=0.0, 
+				mean=0.0,
 				std=noise_multiplier * c, # calibrate with median clipping threshold
 				size=p.summed_grad.shape,
-				device=p.summed_grad.device, 
+				device=p.summed_grad.device,
 			)
 
 
 def scale_grad(
-		params: list[nn.Parameter], 
+		params: list[nn.Parameter],
 		expected_batch_size: int,
 		# accumulated_iterations: int,
 	) -> None:
 	"""
 	Divides gradients by ``expected_batch_size``.
-	
+
 	Parameters
 	----------
 	params : list[nn.Parameter]

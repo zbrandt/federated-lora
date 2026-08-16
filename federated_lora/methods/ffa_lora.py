@@ -4,15 +4,15 @@ import torch
 import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
-from federated_lora.server import Server
 from federated_lora.privacy import privatize, zero_grad
+from federated_lora.server import Server
 
 
 class FFALoRA:
 	name = 'ffa_lora'
 
 	def set_target_modules(self, model: nn.Module) -> None:
-		# fix the randomly initialized non-zero matrices (matrix A) and only 
+		# fix the randomly initialized non-zero matrices (matrix A) and only
 		# fine-tune the zero-initialized matrices (matrix B)
 		for name, parameter in model.named_parameters():
 			if 'lora_B' in name or 'classifier' in name:

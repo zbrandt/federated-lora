@@ -5,8 +5,8 @@ from dataclasses import dataclass
 import torch
 from opacus import PrivacyEngine
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ExponentialLR
+from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 
 from federated_lora.data import cycle
