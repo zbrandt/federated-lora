@@ -5,13 +5,7 @@ import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
 from federated_lora.server import Server
-from federated_lora.privacy import (
-	get_trainable_with_grad_sample,
-	clip_and_accumulate,
-	add_noise,
-	scale_grad,
-	zero_grad
-)
+from federated_lora.privacy import privatize, zero_grad
 
 
 class DPLoRA:
@@ -30,16 +24,14 @@ class DPLoRA:
 		optimizer: DPOptimizer, 
 		round: int, 
 		step: int,
-		noise_multiplier: float
 	) -> None:
-		params = get_trainable_with_grad_sample(model)
-		thresholds = clip_and_accumulate(params)
-
-		add_noise(thresholds, noise_multiplier)
-		scale_grad(params, optimizer.expected_batch_size, 1)
-		zero_grad(params)
+		params = privatize(model, optimizer)
+		if params is None:
+			return
 
 		optimizer.original_optimizer.step()
+
+		zero_grad(params)
 		optimizer.zero_grad()
 
 	def aggregate(

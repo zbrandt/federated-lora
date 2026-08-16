@@ -6,6 +6,7 @@ from opacus.optimizers.optimizer import DPOptimizer
 from torch.nn import functional as F
 
 from federated_lora.server import Server
+from federated_lora.privacy import privatize, zero_grad
 
 
 class LALoRA:
@@ -40,35 +41,32 @@ class LALoRA:
 		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
 	) -> None:
 		""" """
-		if optimizer.pre_step():
-			for name, parameter in model.named_parameters():
-				if parameter.grad is None:
-					continue
-				if 'lora_A' in name:
-					if step % 2 == 1:
-						parameter.grad = self.smooth(
-							parameter.grad, mode='row'
-						)
-					else:
-						parameter.grad.zero_()
-				elif 'lora_B' in name:
-					if step % 2 == 0:
-						parameter.grad = self.smooth(
-							parameter.grad, mode='col'
-						)
-					else:
-						parameter.grad.zero_()
+		params = privatize(model, optimizer)
+		if params is None:
+			return
 
-			optimizer.original_optimizer.step()
-			optimizer.zero_grad()
+		# update matrix B on odd local steps
+		# update matrix A on even local steps
+		for name, parameter in model.named_parameters():
+			if parameter.grad is None:
+				continue
+			if 'lora_A' in name:
+				if step % 2 == 1:
+					parameter.grad = self.smooth(parameter.grad, mode='row')
+				else:
+					parameter.grad.zero_()
+			elif 'lora_B' in name:
+				if step % 2 == 0:
+					parameter.grad = self.smooth(parameter.grad, mode='col')
+				else:
+					parameter.grad.zero_()
+
+		optimizer.original_optimizer.step()
+
+		zero_grad(params)
+		optimizer.zero_grad()
 
 	def aggregate(
 		self, uploads: list[dict[str, torch.Tensor]], num_examples: list[int]
 	) -> dict[str, torch.Tensor]:
-		# return {
-		# 	key: torch.stack(
-		# 		[upload[key].float() for upload in uploads], dim=0
-		# 	).mean(dim=0)
-		# 	for key in uploads[0]
-		# }
 		return Server.fedavg(uploads, num_examples)

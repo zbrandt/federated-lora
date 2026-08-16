@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-
-# TODO: from torch.optim import Optimizer for non-DP runs
 from opacus.optimizers.optimizer import DPOptimizer
 
 from federated_lora.server import Server
+from federated_lora.privacy import privatize, zero_grad
 
 
 class RoLoRA:
@@ -22,17 +21,24 @@ class RoLoRA:
 	def step(
 		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
 	) -> None:
-		if optimizer.pre_step():
-			for name, parameter in model.named_parameters():
-				if parameter.grad is None:
-					continue
-				if round % 2 == 0 and 'lora_B' in name:
-					parameter.grad.zero_()
-				elif round % 2 == 1 and 'lora_A' in name:
-					parameter.grad.zero_()
+		params = privatize(model, optimizer)
+		if params is None:
+			return
 
-			optimizer.original_optimizer.step()
-			optimizer.zero_grad()
+		# freeze A and update B in an odd communication round
+		# freeze B and update A in an even communication round
+		for name, parameter in model.named_parameters():
+			if parameter.grad is None:
+				continue
+			if round % 2 == 0 and 'lora_B' in name:
+				parameter.grad.zero_()
+			elif round % 2 == 1 and 'lora_A' in name:
+				parameter.grad.zero_()
+
+		optimizer.original_optimizer.step()
+
+		zero_grad(params)
+		optimizer.zero_grad()
 
 	def aggregate(
 		self,

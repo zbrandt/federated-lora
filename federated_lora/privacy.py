@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from opacus import GradSampleModule
+from opacus.optimizers import DPOptimizer
 from opacus.accountants.utils import get_noise_multiplier
 
 
@@ -56,27 +57,48 @@ def compute_noise_level(
 	return sigma
 
 
-def get_trainable_with_grad_sample(
-		model: GradSampleModule
-	) -> list[nn.Parameter]:
+def privatize(
+		model: GradSampleModule,
+		optimizer: DPOptimizer,
+	) -> list[nn.Parameter] | None:
 	"""
-	Get trainable parameters with a per-example gradient.
+	Clip per sample gradients and add Gaussian noise.
+
+	Aggregate ``p.grad_sample`` over all parameters to calculate per sample 
+	norms. Clip ``p.grad_sample`` so that per sample norm is not above 
+	threshold. Aggregate clipped per sample gradients into ``p.summed_grad``. 
+	Add Gaussian noise to ``p.summed_grad`` calibrated to a given noise 
+	multiplier and per-layer median clipping threshold. Divide gradients by 
+	``expected_batch_size`` into ``p.grad``.
 
 	Parameters
 	----------
 	model : GradSampleModule
-		The wrapped model for computing per-example gradients.
-
+		The wrapped model carrying per-example gradients.
+	optimizer : DPOptimizer
+		The wrapped optimizer carrying the noise multiplier and expected batch 
+		size.
+	
 	Returns
 	-------
-	list[nn.Parameter]
-		A list of parameters with per-example gradients.
+	list[nn.Parameter] | None
+		A list of the privatized parameters or ``None`` for an empty batch.
 	"""
-	return [
-		p for _, p in model.named_parameters()
-		if p.requires_grad and getattr(p, 'grad_sample', None) is not None
-	]
+	params = []
+	for _, p in model.named_parameters():
+		if p.requires_grad and getattr(p, 'grad_sample', None) is not None:
+			params.append(p)
 
+	if not params: 
+		optimizer.zero_grad() 
+		return
+
+	thresholds = clip_and_accumulate(params)
+	add_noise(thresholds, optimizer.noise_multiplier)
+	scale_grad(params, optimizer.expected_batch_size)
+
+	return params
+	
 
 def clip_and_accumulate(
 		params: list[nn.Parameter]
@@ -121,7 +143,8 @@ def add_noise(
 		noise_multiplier: float, 
 	) -> None:
 	"""
-	Adds noise to clipped gradients. Stores clipped and noised result in ``p.grad``
+	Adds noise to clipped gradients. Stores clipped and noised result in 
+	``p.summed_grad``.
 
 	Parameters
 	----------
@@ -134,7 +157,7 @@ def add_noise(
 		if noise_multiplier > 0:
 			p.summed_grad = p.summed_grad + torch.normal(
 				mean=0.0, 
-				std=noise_multiplier * c,
+				std=noise_multiplier * c, # calibrate with median clipping threshold
 				size=p.summed_grad.shape,
 				device=p.summed_grad.device, 
 			)
@@ -143,6 +166,7 @@ def add_noise(
 def scale_grad(
 		params: list[nn.Parameter], 
 		expected_batch_size: int,
+		# accumulated_iterations: int,
 	) -> None:
 	"""
 	Divides gradients by ``expected_batch_size``.

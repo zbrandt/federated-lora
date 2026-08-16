@@ -5,12 +5,15 @@ import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
 from federated_lora.server import Server
+from federated_lora.privacy import privatize, zero_grad
 
 
 class FFALoRA:
 	name = 'ffa_lora'
 
 	def set_target_modules(self, model: nn.Module) -> None:
+		# fix the randomly initialized non-zero matrices (matrix A) and only 
+		# fine-tune the zero-initialized matrices (matrix B)
 		for name, parameter in model.named_parameters():
 			if 'lora_B' in name or 'classifier' in name:
 				parameter.requires_grad = True
@@ -20,7 +23,13 @@ class FFALoRA:
 	def step(
 		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
 	) -> None:
-		optimizer.step()
+		params = privatize(model, optimizer)
+		if params is None:
+			return
+
+		optimizer.original_optimizer.step()
+
+		zero_grad(params)
 		optimizer.zero_grad()
 
 	def aggregate(
