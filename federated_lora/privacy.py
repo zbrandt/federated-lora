@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-import numpy as np
-from opacus.accountants import RDPAccountant
+import torch
+import torch.nn as nn
+from opacus import GradSampleModule
 from opacus.accountants.utils import get_noise_multiplier
 
 
-# TODO: rewrite docstring
 def compute_noise_level(
 	num_examples: int,
 	batch_size: int,
@@ -56,6 +54,124 @@ def compute_noise_level(
 
 	print(f'size: {num_examples}, sample_rate: {sample_rate}, sigma: {sigma}')
 	return sigma
+
+
+def get_trainable_with_grad_sample(
+		model: GradSampleModule
+	) -> list[nn.Parameter]:
+	"""
+	Get trainable parameters with a per-example gradient.
+
+	Parameters
+	----------
+	model : GradSampleModule
+		The wrapped model for computing per-example gradients.
+
+	Returns
+	-------
+	list[nn.Parameter]
+		A list of parameters with per-example gradients.
+	"""
+	return [
+		p for _, p in model.named_parameters()
+		if p.requires_grad and getattr(p, 'grad_sample', None) is not None
+	]
+
+
+def clip_and_accumulate(
+		params: list[nn.Parameter]
+	) -> dict[nn.Parameter, float]:
+	""" 
+	Perform gradient clipping on a per-layer basis using median clipping.
+
+	Parameters
+	----------
+	params : list[nn.Parameter]
+		The list of parameters with per-example gradients.
+
+	Returns
+	-------
+	dict[torch.Tensor, float]
+		A dictionary mapping parameters to their clipping threshold.
+	"""
+	thresholds = {}
+
+	for p in params:
+		grad_sample = p.grad_sample
+
+		# get per-example gradient norms
+		norms = grad_sample.reshape(len(grad_sample), -1).norm(2, dim=-1)
+
+		# set clipping threshold to median of gradient norm distribution 
+		c = norms.median().clamp(min=1e-6)
+
+		# scale down norms greater than the threshold, leave the rest alone
+		factor = (c / (norms + 1e-6)).clamp(max=1.0)
+
+		# apply factors and sum over the batch in one shot
+		p.summed_grad = torch.einsum('i,i...->...', factor.to(grad_sample.dtype), grad_sample)
+
+		thresholds[p] = float(c)
+
+	return thresholds
+
+
+def add_noise(
+		thresholds: dict[nn.Parameter, float], 
+		noise_multiplier: float, 
+	) -> None:
+	"""
+	Adds noise to clipped gradients. Stores clipped and noised result in ``p.grad``
+
+	Parameters
+	----------
+	thresholds : dict[nn.Parameter, float]
+		A dictionary mapping parameters to their clipping threshold.
+	noise_multiplier : float
+		The Gaussian noise multiplier for differential privacy.
+	"""
+	for p, c in thresholds.items():
+		if noise_multiplier > 0:
+			p.summed_grad = p.summed_grad + torch.normal(
+				mean=0.0, 
+				std=noise_multiplier * c,
+				size=p.summed_grad.shape,
+				device=p.summed_grad.device, 
+			)
+
+
+def scale_grad(
+		params: list[nn.Parameter], 
+		expected_batch_size: int,
+	) -> None:
+	"""
+	Divides gradients by ``expected_batch_size``.
+	
+	Parameters
+	----------
+	params : list[nn.Parameter]
+		The list of parameters with per-example gradients.
+	expected_batch_size : int
+		The batch_size used for averaging gradients.
+	"""
+	for p in params:
+		p.grad = p.summed_grad / expected_batch_size
+
+
+def zero_grad(
+		params: list[torch.Tensor]
+	) -> None:
+	"""
+	Clear ``p.grad_sample`` and ``p.summed_grad`` from parameters.
+
+	Parameters
+	----------
+	params : list[torch.Tensor]
+		The list of parameters with per-example gradients.
+	"""
+	for p in params:
+		p.summed_grad = None
+		p.grad_sample = None
 
 
 # def perform_accounting(

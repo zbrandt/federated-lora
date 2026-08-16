@@ -15,7 +15,7 @@ class Config:
 	client_sample_rate: float = 0.5
 	dirichlet_alpha: float = 0.1
 
-	model: str = 'microsoft/swin-base-patch4-window7-224-in22k'
+	model: str = 'google/vit-base-patch16-224-in21k'
 	num_labels: int = 100  # number of labels to use in the last layer added to the model, typically for a classification task
 	lora_rank: int = 16
 	lora_alpha: int = 16
@@ -31,7 +31,7 @@ class Config:
 	target_epsilon: float = 3.0
 	target_delta: float = 1e-5
 
-	lr_a: float = 0.20
-	lr_b: float = 0.20
-	lr_head: float = 0.20
+	lr_a: float = 0.02
+	lr_b: float = 0.02
+	lr_head: float = 0.02
 	lr_decay: float = 0.99
