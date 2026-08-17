@@ -75,14 +75,14 @@ def run_experiment(
 	return ok
 
 
-def run(benchmark):
+def run(benchmark, seed):
 	"""4 methods x LR_GRID at --epsilon 0, seed 42, SEARCH_ROUNDS."""
 	for method in METHODS:
 		for lr in LR_GRID:
 			out = f'{RESULTS_ROOT}/{benchmark}/lr{lr}/'
 			log = LOG_DIR / f'{method}_{benchmark}_nodp_lr{lr}_seed{SEED}.log'
 			run_experiment(
-				method, lr, benchmark, SEED, out, log, rounds=SEARCH_ROUNDS
+				method, lr, benchmark, seed, out, log, rounds=SEARCH_ROUNDS
 			)
 	report()
 
@@ -148,12 +148,13 @@ def main():
 		choices=['cifar100', 'sst2'],
 		help='benchmark to search on (passed to experiment.py --task)',
 	)
+	parser.add_argument('--seed', type=int, default=42)
 	args = parser.parse_args()
 
 	if args.mode == 'report':
 		report()
 	else:
-		run(args.benchmark)
+		run(args.benchmark, args.seed)
 
 
 if __name__ == '__main__':
