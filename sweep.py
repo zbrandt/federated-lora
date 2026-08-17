@@ -30,10 +30,13 @@ PYTHON = sys.executable  # use .venv/bin/python on the nodes
 
 BENCHMARK = 'cifar100'
 METHODS = ['dp_lora', 'ffa_lora', 'rolora', 'la_lora']
-LR_GRID = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2]
+LR_GRID = [0.01, 0.02, 0.1, 0.2]  
 COMPARE_LR = 0.02
 SEEDS = [42, 43, 44]
 SEARCH_ROUNDS = 50
+
+CLIPPINGS = ['median', 'flat']
+CLIP_ROUNDS = 100
 
 # Best lr per epsilon per method. FILL IN from `pick-lr` before seed-sweep.
 BEST_LR = {
@@ -44,7 +47,7 @@ BEST_LR = {
 
 
 def run_experiment(
-	method, epsilon, lr, seed, output_dir, log_path, rounds=None
+	method, epsilon, lr, seed, output_dir, log_path, rounds=None, clipping=None
 ):
 	"""Launch one experiment.py run in its own process; stream output to log_path."""
 	cmd = [
@@ -69,6 +72,8 @@ def run_experiment(
 	]
 	if rounds is not None:
 		cmd += ['--rounds', str(rounds)]
+	if clipping is not None:
+		cmd += ['--clipping', clipping]
 
 	log_path.parent.mkdir(parents=True, exist_ok=True)
 	print(
@@ -84,7 +89,6 @@ def run_experiment(
 		f'    {"done" if ok else "FAILED — see " + str(log_path)}', flush=True
 	)
 	return ok
-
 
 def compare(eps):
 	"""4 methods at COMPARE_LR, seed 42, full rounds -> results/sweep/compare/eps<e>/."""
@@ -130,6 +134,27 @@ def seed_sweep(eps):
 			)
 			run_experiment(method, eps, lr, seed, out, log)
 
+def clip_sweep(eps):
+	"""4 methods x LR_GRID x {median, flat} at eps, seed 42, CLIP_ROUNDS.
+
+	-> results/sweep/clip/eps<e>/<clipping>/lr<lr>/. Same (method, eps, lr)
+	run under each clipping strategy so the only difference is the clipping;
+	per-round clip-threshold metrics are logged for the collapse analysis.
+	"""
+	for method in METHODS:
+		for clipping in CLIPPINGS:
+			for lr in LR_GRID:
+				out = f'results/sweep/clip/eps{eps}/{clipping}/lr{lr}/'
+				log = (
+					REPO
+					/ 'logs'
+					/ 'sweep'
+					/ 'clip'
+					/ f'{method}_cifar100_eps{eps}_{clipping}_lr{lr}_seed42.log'
+				)
+				run_experiment(
+					method, eps, lr, 42, out, log, rounds=CLIP_ROUNDS, clipping=clipping
+				)
 
 def pick_lr(log_dir='logs/sweep/lrsearch'):
 	"""Read lr-search logs and print the best lr per (method, epsilon)."""
@@ -178,7 +203,8 @@ def main():
 		description='Drive DP federated-LoRA experiments.'
 	)
 	parser.add_argument(
-		'mode', choices=['compare', 'lr-search', 'seed-sweep', 'pick-lr']
+		'mode',
+		choices=['compare', 'lr-search', 'seed-sweep', 'clip-sweep', 'pick-lr'],
 	)
 	parser.add_argument(
 		'--eps',
@@ -193,9 +219,12 @@ def main():
 		return
 	if args.eps is None:
 		parser.error(f'--eps is required for mode "{args.mode}"')
-	{'compare': compare, 'lr-search': lr_search, 'seed-sweep': seed_sweep}[
-		args.mode
-	](args.eps)
+	{
+		'compare': compare,
+		'lr-search': lr_search,
+		'seed-sweep': seed_sweep,
+		'clip-sweep': clip_sweep,
+	}[args.mode](args.eps)
 
 
 if __name__ == '__main__':
