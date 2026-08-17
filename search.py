@@ -1,17 +1,3 @@
-#!/usr/bin/env python
-"""
-search.py — find the best learning rate per method WITHOUT differential privacy.
-
-DP-free companion to sweep.py: runs each method with --epsilon 0 (no noise, no
-clipping) to see at what lr each method learns best on its own. experiment.py's
---task is the benchmark name, so lr is encoded in the --output-dir
-(results/search/<benchmark>/lr<lr>/); logs (tagged with lr) live under
-logs/search/ and are parsed by `report`.
-
-    tmux new-session -d -s search -c ~/federated-lora '.venv/bin/python search.py run; exec bash'
-    .venv/bin/python search.py report
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -25,7 +11,7 @@ REPO = Path(__file__).resolve().parent
 PYTHON = sys.executable  # use .venv/bin/python on the nodes
 
 METHODS = ['dp_lora', 'ffa_lora', 'rolora', 'la_lora']
-LR_GRID = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2]
+LR_GRID = [0.01, 0.02, 0.1, 0.2]
 SEED = 42
 SEARCH_ROUNDS = 50
 
@@ -76,11 +62,11 @@ def run_experiment(
 
 
 def run(benchmark, seed):
-	"""4 methods x LR_GRID at --epsilon 0, seed 42, SEARCH_ROUNDS."""
+	"""4 methods x LR_GRID at --epsilon 0, seed, SEARCH_ROUNDS."""
 	for method in METHODS:
 		for lr in LR_GRID:
 			out = f'{RESULTS_ROOT}/{benchmark}/lr{lr}/'
-			log = LOG_DIR / f'{method}_{benchmark}_nodp_lr{lr}_seed{SEED}.log'
+			log = LOG_DIR / f'{method}_{benchmark}_nodp_lr{lr}_seed{seed}.log'
 			run_experiment(
 				method, lr, benchmark, seed, out, log, rounds=SEARCH_ROUNDS
 			)
@@ -148,7 +134,7 @@ def main():
 		choices=['cifar100', 'sst2'],
 		help='benchmark to search on (passed to experiment.py --task)',
 	)
-	parser.add_argument('--seed', type=int, default=42)
+	parser.add_argument('--seed', type=int)
 	args = parser.parse_args()
 
 	if args.mode == 'report':

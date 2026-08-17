@@ -107,7 +107,7 @@ class Server:
 			param_groups = selected[0].optimizer.param_groups
 			lr_A = param_groups[0]['lr']
 			lr_B = param_groups[1]['lr']
-			lr_head = lr_B = param_groups[2]['lr']
+			lr_head = param_groups[2]['lr']
 
 			# decay learning rates
 			for client in self.clients:
