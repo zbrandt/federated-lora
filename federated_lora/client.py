@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import torch
 from opacus import PrivacyEngine
 from torch.optim import Optimizer
@@ -11,6 +9,7 @@ from transformers import PreTrainedModel
 
 from federated_lora.data import cycle
 from federated_lora.method import Method
+from federated_lora.metrics import summarize_diagnostics
 from federated_lora.model import get_trainable_state
 
 
@@ -41,14 +40,30 @@ class Client:
 		self,
 		round: int,
 		method: Method,
-	) -> None:
-		""" """
+	) -> tuple[dict, float, dict]:
+		"""
+		Perform local training steps for one global communication round.
+
+		Parameters
+		----------
+		round : int
+			The current global communication round.
+		method : Method
+			The federated fine-tuning method.
+
+		Returns
+		-------
+		tuple[dict, float, dict]
+			A trainable state-dict upload for server side aggregation,
+			mean local training loss, and round diagnoistics summary.
+		"""
 		self.model = self.model.to(self.device)
 		self.model.train()
 
 		batches = cycle(self.dataloader)
 
 		total_loss = 0.0
+		step_diags = []
 		for step in range(self.steps):
 			batch = next(batches)
 			batch = {
@@ -67,6 +82,13 @@ class Client:
 				step=step,
 			)
 
+			# privatize() stashes this step's clipping/grad-norm diagnostics on
+			# the optimizer; collect it (empty Poisson lots leave it None).
+			diag = getattr(self.optimizer, 'last_diagnostics', None)
+			if diag is not None:
+				step_diags.append(diag)
+				self.optimizer.last_diagnostics = None
+
 			self.optimizer.zero_grad(set_to_none=True)
 
 			total_loss += float(loss.item())
@@ -75,4 +97,8 @@ class Client:
 
 		self.model = self.model.to('cpu')
 
-		return upload, total_loss / self.steps
+		return (
+			upload,
+			total_loss / self.steps,
+			summarize_diagnostics(step_diags),
+		)

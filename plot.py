@@ -160,7 +160,7 @@ def plot_metrics(grouped: dict[str, list[Run]], subtitle: str) -> plt.Figure:
 		The 2x2 figure, ready to save.
 	"""
 	fig, axes = plt.subplots(2, 2, figsize=(12, 9), sharex=True)
-	for axis, (metric, label) in zip(axes.flat, METRICS.items()):
+	for axis, (metric, label) in zip(axes.flat, METRICS.items(), strict=False):
 		for method, runs in grouped.items():
 			rounds, mean, std = seed_mean_std(runs, metric)
 			axis.plot(rounds, mean, linewidth=2, label=METHODS[method])
@@ -205,7 +205,9 @@ def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(
 		description='Plot federated LoRA benchmark results by method.'
 	)
-	parser.add_argument('--results-dir', type=str, default='results')
+	parser.add_argument(
+		'--results-dir', type=str, default='results/sweep/final'
+	)
 	parser.add_argument('--output', type=str, default='figures/benchmark.png')
 
 	return parser.parse_args()

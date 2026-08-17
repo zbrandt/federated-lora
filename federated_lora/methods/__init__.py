@@ -7,7 +7,7 @@ from federated_lora.methods.flora import FLoRA
 from federated_lora.methods.la_lora import LALoRA
 from federated_lora.methods.rolora import RoLoRA
 
-_METHODS: dict[str, type[Method]] = {
+METHODS: dict[str, type[Method]] = {
 	'dp_lora': DPLoRA,
 	'ffa_lora': FFALoRA,
 	'rolora': RoLoRA,
@@ -15,9 +15,4 @@ _METHODS: dict[str, type[Method]] = {
 	'flora': FLoRA,
 }
 
-
-def get_method(name: str) -> Method:
-	return _METHODS[name]()
-
-
-__all__ = ['Method', 'get_method']
+__all__ = ['Method']

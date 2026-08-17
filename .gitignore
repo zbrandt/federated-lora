@@ -172,3 +172,14 @@ pyrightconfig.json
 # refactor leftovers (mount blocks deletion; safe to remove)
 .trash/
 .git/index.lock.stale
+
+### Federated LoRA ###
+# datasets
+./data
+
+# outputs
+logs
+results
+
+# figures
+figures

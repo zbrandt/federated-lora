@@ -3,7 +3,10 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from peft import LoraConfig, PeftModel, get_peft_model
-from transformers import AutoModelForImageClassification
+from transformers import (
+	AutoModelForImageClassification,
+	AutoModelForSequenceClassification,
+)
 
 from federated_lora.method import Method
 
@@ -17,6 +20,7 @@ def create_peft_model(
 	lora_dropout: float,
 	method: Method,
 	device: torch.device,
+	experiment: str,
 ) -> PeftModel:
 	"""
 	Create a trainable PeftModel from the base model and the parameters for
@@ -30,30 +34,38 @@ def create_peft_model(
 		The number of labels to use in the classification layer.
 	lora_rank : int
 		The LoRA attention dimension (the "rank").
-	target_modules : tuple[str, ...]
-		The names of the modules to apply the adapter to.
 	lora_alpha : int
 		The alpha parameter for LoRA scaling.
-	lora_dropout : int
+	target_modules : tuple[str, ...]
+		The names of the modules to apply the adapter to.
+	lora_dropout : float
 		The dropout probability for LoRA layers.
 	method : Method
-		A federated fine-tuning method.
+		The federated fine-tuning method.
 	device : torch.device
 		The selected device type ("cpu" or "cuda").
+	experiment : str
+		The experiment setup ("vision" for image classification or "text" for
+		language understanding).
 
 	Returns
 	-------
 	PeftModel
 		The PEFT model object from the in-place modified model and LoRA config.
 	"""
-	base = AutoModelForImageClassification.from_pretrained(
-		name, num_labels=num_labels, ignore_mismatched_sizes=True
-	).to(device)
+	if experiment == 'text':
+		base = AutoModelForSequenceClassification.from_pretrained(
+			name, num_labels=num_labels
+		).to(device)
+	else:
+		base = AutoModelForImageClassification.from_pretrained(
+			name, num_labels=num_labels, ignore_mismatched_sizes=True
+		).to(device)
 
 	peft_config = LoraConfig(
 		r=lora_rank,
 		lora_alpha=lora_alpha,
-		target_modules=target_modules,
+		target_modules=list(target_modules),
 		lora_dropout=lora_dropout,
 		bias='none',
 	)

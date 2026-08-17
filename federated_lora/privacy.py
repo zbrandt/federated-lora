@@ -6,13 +6,15 @@ from opacus import GradSampleModule
 from opacus.accountants.utils import get_noise_multiplier
 from opacus.optimizers import DPOptimizer
 
+from federated_lora.metrics import pre_clip_norm_stats
+
 
 def compute_noise_level(
 	num_examples: int,
 	batch_size: int,
 	global_rounds: int,
 	local_steps: int,
-	target_epsilon: float,
+	target_epsilon: float | None,
 	target_delta: float,
 ) -> float:
 	"""
@@ -30,8 +32,9 @@ def compute_noise_level(
 		The number of communication rounds.
 	local_steps : int
 		The number of local update steps per round.
-	target_epsilon : float
-		The target privacy loss budget. ``0.0`` disables DP (sigma = 0).
+	target_epsilon : float | None
+		The target privacy loss budget. ``None`` disables differential privacy,
+		with a Gaussian noise multiplier of ``0.0``.
 	target_delta : float
 		The target failure probability of the (epsilon, delta)-DP guarantee.
 
@@ -40,36 +43,36 @@ def compute_noise_level(
 	float
 		The Gaussian noise multiplier for differential privacy.
 	"""
-	sample_rate = batch_size / num_examples
-	if target_epsilon == 0.0:
-		sigma = 0.0
-	else:
-		steps = global_rounds * local_steps
-		sigma = get_noise_multiplier(
-			target_epsilon=target_epsilon,
-			target_delta=target_delta,
-			sample_rate=sample_rate,
-			steps=steps,
-			accountant='prv',
-		)
+	if not target_epsilon:
+		return 0.0
+
+	sample_rate = min(1.0, batch_size / max(1, num_examples))
+	steps = global_rounds * local_steps
+	sigma = get_noise_multiplier(
+		target_epsilon=target_epsilon,
+		target_delta=target_delta,
+		sample_rate=sample_rate,
+		steps=steps,
+		accountant='prv',
+	)
 
 	print(f'size: {num_examples}, sample_rate: {sample_rate}, sigma: {sigma}')
 	return sigma
 
 
 def privatize(
-		model: GradSampleModule,
-		optimizer: DPOptimizer,
-	) -> list[nn.Parameter] | None:
+	model: GradSampleModule,
+	optimizer: DPOptimizer,
+) -> list[nn.Parameter] | None:
 	"""
 	Clip per sample gradients and add Gaussian noise.
 
 	Aggregate ``p.grad_sample`` over all parameters to calculate per sample
-	norms. Clip ``p.grad_sample`` so that per sample norm is not above
-	threshold. Aggregate clipped per sample gradients into ``p.summed_grad``.
-	Add Gaussian noise to ``p.summed_grad`` calibrated to a given noise
-	multiplier and per-layer median clipping threshold. Divide gradients by
-	``expected_batch_size`` into ``p.grad``.
+	norms. Clip ``p.grad_sample`` according to the optimizer's clipping strategy
+	(``'median'``, ``'flat'``, or ``'none'``). Aggregate clipped per sample
+	gradients into ``p.summed_grad``. Add Gaussian noise to ``p.summed_grad``
+	calibrated to the noise multiplier and the clipping threshold. Divide
+	gradients by ``expected_batch_size`` into ``p.grad``.
 
 	Parameters
 	----------
@@ -84,42 +87,92 @@ def privatize(
 	list[nn.Parameter] | None
 		A list of the privatized parameters or ``None`` for an empty batch.
 	"""
-	params = []
-	for _, p in model.named_parameters():
+	named = {}
+	for n, p in model.named_parameters():
 		if p.requires_grad and getattr(p, 'grad_sample', None) is not None:
-			params.append(p)
+			named[n] = p
 
-	if not params:
+	if not named:
+		optimizer.last_diagnostics = None
 		optimizer.zero_grad()
 		return
 
-	thresholds = clip_and_accumulate(params)
+	strategy = getattr(optimizer, 'clipping_strategy', 'median')
+
+	params = list(named.values())
+	norm_mean, norm_median = pre_clip_norm_stats(params)
+	thresholds = clip_and_accumulate(params, strategy, optimizer.max_grad_norm)
 	add_noise(thresholds, optimizer.noise_multiplier)
 	scale_grad(params, optimizer.expected_batch_size)
+
+	optimizer.last_diagnostics = {
+		'strategy': strategy,
+		'grad_norm_mean': norm_mean,
+		'grad_norm_median': norm_median,
+		'clip_thresholds': {n: thresholds[p] for n, p in named.items()},
+	}
 
 	return params
 
 
 def clip_and_accumulate(
-		params: list[nn.Parameter]
-	) -> dict[nn.Parameter, float]:
+	params: list[nn.Parameter],
+	strategy: str = 'median',
+	max_grad_norm: float = 1.0,
+) -> dict[nn.Parameter, float]:
 	"""
-	Perform gradient clipping on a per-layer basis using median clipping.
+	Clip per-example gradients and sum them into ``p.summed_grad``.
+
+	Three clipping strategies are supported:
+
+	- ``'median'``: each layer is clipped independently to the median of its own
+		per-example gradient-norm distribution.
+	- ``'flat'``: the global per-example gradient norm (across all layers) is
+		clipped to the single bound ``max_grad_norm``.
+	- ``'none'``: no clipping, the per-example gradients are summed as-is.
 
 	Parameters
 	----------
 	params : list[nn.Parameter]
 		The list of parameters with per-example gradients.
+	strategy : str
+		The clipping strategy (``'median'``, ``'flat'``, or ``'none'``).
+		Defaults to ``'median'``.
+	max_grad_norm : float
+		The global clipping bound used by the ``'flat'`` strategy.
 
 	Returns
 	-------
-	dict[torch.Tensor, float]
-		A dictionary mapping parameters to their clipping threshold.
+	dict[nn.Parameter, float]
+		A dictionary mapping each parameter to the clipping threshold applied
+		to it. ``add_noise`` uses these to calibrate the per-layer noise scale.
 	"""
-	thresholds = {}
+	thresholds: dict[nn.Parameter, float] = {}
+
+	if strategy == 'flat':
+		per_example_norms = torch.stack(
+			[
+				p.grad_sample.reshape(len(p.grad_sample), -1).norm(2, dim=-1)
+				for p in params
+			],
+			dim=0,
+		).norm(2, dim=0)
+		factor = (max_grad_norm / (per_example_norms + 1e-6)).clamp(max=1.0)
+		for p in params:
+			grad_sample = p.grad_sample
+			p.summed_grad = torch.einsum(
+				'i,i...->...', factor.to(grad_sample.dtype), grad_sample
+			)
+			thresholds[p] = float(max_grad_norm)
+		return thresholds
 
 	for p in params:
 		grad_sample = p.grad_sample
+
+		if strategy == 'none':
+			p.summed_grad = grad_sample.sum(dim=0)
+			thresholds[p] = float('inf')
+			continue
 
 		# get per-example gradient norms
 		norms = grad_sample.reshape(len(grad_sample), -1).norm(2, dim=-1)
@@ -131,7 +184,9 @@ def clip_and_accumulate(
 		factor = (c / (norms + 1e-6)).clamp(max=1.0)
 
 		# apply factors and sum over the batch in one shot
-		p.summed_grad = torch.einsum('i,i...->...', factor.to(grad_sample.dtype), grad_sample)
+		p.summed_grad = torch.einsum(
+			'i,i...->...', factor.to(grad_sample.dtype), grad_sample
+		)
 
 		thresholds[p] = float(c)
 
@@ -139,9 +194,9 @@ def clip_and_accumulate(
 
 
 def add_noise(
-		thresholds: dict[nn.Parameter, float],
-		noise_multiplier: float,
-	) -> None:
+	thresholds: dict[nn.Parameter, float],
+	noise_multiplier: float,
+) -> None:
 	"""
 	Adds noise to clipped gradients. Stores clipped and noised result in
 	``p.summed_grad``.
@@ -157,17 +212,18 @@ def add_noise(
 		if noise_multiplier > 0:
 			p.summed_grad = p.summed_grad + torch.normal(
 				mean=0.0,
-				std=noise_multiplier * c, # calibrate with median clipping threshold
+				std=noise_multiplier
+				* c,  # calibrate with the clipping threshold
 				size=p.summed_grad.shape,
 				device=p.summed_grad.device,
 			)
 
 
 def scale_grad(
-		params: list[nn.Parameter],
-		expected_batch_size: int,
-		# accumulated_iterations: int,
-	) -> None:
+	params: list[nn.Parameter],
+	expected_batch_size: int,
+	# accumulated_iterations: int,
+) -> None:
 	"""
 	Divides gradients by ``expected_batch_size``.
 
@@ -182,9 +238,7 @@ def scale_grad(
 		p.grad = p.summed_grad / expected_batch_size
 
 
-def zero_grad(
-		params: list[torch.Tensor]
-	) -> None:
+def zero_grad(params: list[torch.Tensor]) -> None:
 	"""
 	Clear ``p.grad_sample`` and ``p.summed_grad`` from parameters.
 
@@ -196,41 +250,3 @@ def zero_grad(
 	for p in params:
 		p.summed_grad = None
 		p.grad_sample = None
-
-
-# def perform_accounting(
-# 	noise_multiplier: float,
-# 	sample_rate: float,
-# 	steps: int,
-# 	target_delta: float,
-# ) -> float:
-# 	"""
-# 	Perform privacy accounting via Rényi Differential Privacy.
-
-# 	Parameters
-# 	----------
-# 	noise_multiplier : float
-# 		The Gaussian noise multiplier for differential privacy.
-# 	sample_rate : float
-# 		The local data sampling rate.
-# 	steps : int
-# 		The product of the number of communication rounds and the number of
-# 		local update steps per round.
-# 	target_delta : float
-# 		TODO
-
-# 	Returns
-# 	-------
-# 	float
-# 		The privacy budget expended from training.
-# 	"""
-# 	accountant = RDPAccountant()
-
-# 	for _ in range(steps):
-# 		# account for the privacy cost of one training step
-# 		accountant.step(
-# 			noise_multiplier=noise_multiplier,
-# 			sample_rate=sample_rate,
-# 		)
-
-# 	return accountant.get_epsilon(delta=target_delta)

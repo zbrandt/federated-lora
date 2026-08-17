@@ -9,14 +9,14 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import ExponentialLR
 from opacus import PrivacyEngine
 from torch.optim import SGD
+from torch.optim.lr_scheduler import ExponentialLR
 
 from federated_lora.client import Client
-from federated_lora.config import Config
+from federated_lora.config import TASKS, Config
 from federated_lora.data import load_datasets, prepare_dataloaders
-from federated_lora.methods import get_method
+from federated_lora.methods import METHODS
 from federated_lora.model import create_peft_model, group_trainable_parameters
 from federated_lora.privacy import compute_noise_level
 from federated_lora.server import Server
@@ -25,16 +25,19 @@ from federated_lora.server import Server
 def parse_args():
 	parser = argparse.ArgumentParser()
 
-	parser.add_argument('--task', type=str, required=True)
+	parser.add_argument(
+		'--task', type=str, required=True, choices=['cifar100', 'sst2']
+	)
 	parser.add_argument('--method', type=str, required=True)
 	parser.add_argument('--batch-size', type=int, default=16)
+	parser.add_argument('--rounds', type=int, default=100)
 	parser.add_argument('--epsilon', type=float, default=3.0)
+	parser.add_argument('--clipping', type=str, default='median')
 	parser.add_argument('--lr-a', type=float, default=0.20)
 	parser.add_argument('--lr-b', type=float, default=0.20)
 	parser.add_argument('--lr-head', type=float, default=0.20)
 	parser.add_argument('--seed', type=int, default=42)
 	parser.add_argument('--output-dir', type=str, default='results/')
-	parser.add_argument('--global-rounds', type=int, default=None)
 
 	return parser.parse_args()
 
@@ -53,7 +56,7 @@ def build(config: Config) -> Server:
 
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-	method = get_method(config.method)
+	method = METHODS[config.method]()
 
 	model = create_peft_model(
 		name=config.model,
@@ -64,12 +67,15 @@ def build(config: Config) -> Server:
 		lora_dropout=config.lora_dropout,
 		method=method,
 		device=device,
+		experiment=config.experiment,
 	)
 
 	data_dir = load_datasets(
-		name=config.dataset,
+		dataset=config.dataset,
 		num_clients=config.num_clients,
 		alpha=config.dirichlet_alpha,
+		task=config.task,
+		experiment=config.experiment,
 		seed=config.seed,
 	)
 
@@ -78,6 +84,8 @@ def build(config: Config) -> Server:
 		data_dir=data_dir,
 		num_clients=config.num_clients,
 		batch_size=config.batch_size,
+		task=config.task,
+		experiment=config.experiment,
 	)
 
 	clients = []
@@ -114,6 +122,8 @@ def build(config: Config) -> Server:
 			max_grad_norm=config.max_grad_norm,
 		)
 
+		optimizer.clipping_strategy = config.clipping
+
 		scheduler = ExponentialLR(optimizer, gamma=config.lr_decay)
 
 		clients.append(
@@ -148,30 +158,25 @@ def run(args: list[str]) -> dict:
 		task=args.task,
 		method=args.method,
 		batch_size=args.batch_size,
+		global_rounds=args.rounds,
 		target_epsilon=args.epsilon,
 		lr_a=args.lr_a,
 		lr_b=args.lr_b,
 		lr_head=args.lr_head,
 		seed=args.seed,
 		output_dir=args.output_dir,
+		clipping=args.clipping,
 	)
-	if args.global_rounds is not None:
-		config.global_rounds = args.global_rounds
+
+	for key, value in TASKS[args.task].items():
+		setattr(config, key, value)
+
+	if not args.epsilon:
+		config.clipping = 'none'
+
 	server = build(config)
 	history = server.run()
 	result = {'config': asdict(config), 'history': history}
-
-	# # The manual DP pipeline (privatize) bypasses DPOptimizer.step(), so
-	# # Opacus's accountant is never advanced and get_epsilon() crashes on an
-	# # empty history (PRV divide-by-zero -> NaN). sigma was pre-computed by
-	# # compute_noise_level to satisfy the target epsilon, so report that.
-	# result['epsilon_breakdown'] = {
-	# 	'per_client': [config.target_epsilon] * len(server.clients),
-	# 	'note': (
-	# 		'target epsilon; sigma precomputed to satisfy it '
-	# 		'(manual DP pipeline does not advance the Opacus accountant)'
-	# 	),
-	# }
 
 	path = (
 		Path(config.output_dir)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import random
 import time
-from collections import defaultdict
 
 import torch
 from torch.utils.data import DataLoader
@@ -11,6 +10,7 @@ from transformers import PreTrainedModel
 from federated_lora.client import Client
 from federated_lora.eval import evaluate
 from federated_lora.method import Method
+from federated_lora.metrics import aggregate_diags
 from federated_lora.model import get_trainable_state, load_trainable_state
 
 
@@ -72,33 +72,42 @@ class Server:
 		rng = random.Random(self.seed)
 
 		for r in range(1, self.rounds + 1):
-
 			# select clients
 			k = max(1, round(self.sample_rate * len(self.clients)))
 			indices = rng.sample(range(len(self.clients)), k)
 			selected = [self.clients[i] for i in indices]
 
 			t0 = time.perf_counter()
-			uploads, losses = [], []
+			uploads, losses, diags = [], [], []
 			for client in selected:
-
 				# broadcast model weights
 				global_state = get_trainable_state(self.model)
 				load_trainable_state(client.model, global_state)
 
 				# compute local client uploads
-				upload, loss = client.local_update(
+				upload, loss, diag = client.local_update(
 					round=r, method=self.method
 				)
 
 				uploads.append(upload)
 				losses.append(loss)
+				diags.append(diag)
+
+			noise_multiplier = float(
+				getattr(selected[0].optimizer, 'noise_multiplier', 0.0)
+			)
 
 			# aggregate client uploads into the new global state
 			num_examples = [client.num_examples for client in selected]
 			agg = self.method.aggregate(
 				uploads=uploads, num_examples=num_examples
 			)
+
+			# TODO: snapshot learning rates before decay
+			param_groups = selected[0].optimizer.param_groups
+			lr_A = param_groups[0]['lr']
+			lr_B = param_groups[1]['lr']
+			lr_head = lr_B = param_groups[2]['lr']
 
 			# decay learning rates
 			for client in self.clients:
@@ -121,6 +130,15 @@ class Server:
 				'test_loss': test_loss,
 				'top1_acc': top1_acc,
 				'top5_acc': top5_acc,
+				'train_s': t1 - t0,
+				'eval_s': t2 - t1,
+				'selected_clients': indices,
+				'num_selected': len(selected),
+				'lr_A': lr_A,
+				'lr_B': lr_B,
+				'lr_head': lr_head,
+				'noise_multiplier': noise_multiplier,
+				**aggregate_diags(diags),
 			}
 
 			history.append(metrics)
@@ -131,6 +149,7 @@ class Server:
 				f'test_loss={metrics["test_loss"]:.4f} '
 				f'top1_acc={metrics["top1_acc"]:.4f} '
 				f'top5_acc={metrics["top5_acc"]:.4f} '
+				f'clip={metrics.get("clip_threshold_mean")} '
 				f'train_s={t1 - t0:.1f} eval_s={t2 - t1:.1f}',
 				flush=True,
 			)
