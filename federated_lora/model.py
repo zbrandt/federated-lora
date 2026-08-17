@@ -3,9 +3,19 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from peft import LoraConfig, PeftModel, get_peft_model
+from peft.tuners.lora import LoraLayer
 from transformers import AutoModelForImageClassification
 
 from federated_lora.method import Method
+
+def reset_lora_layers(model: nn.Module) -> None:
+	'''
+	Reinitalize every LoRA adapter's AB weights in place, at whatever rank the layer is already constructed with.
+	'''
+	target = unwrap(model)
+	for module in target.modules():
+		if isinstance(module, LoraLayer):
+			module.reset_lora_parameters('default', True)
 
 # TODO: Modify so that the lora_rank can be a list of ranks
 def create_peft_model(

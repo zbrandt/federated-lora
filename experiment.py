@@ -113,12 +113,14 @@ def build(config: Config) -> Server:
 			weight_decay=0.0,
 		)
 
+	# target epsilon is either config.targetepsilon or equal to the client's respective value
+		target_epsilon = config.client_epsilons[i] if config.client_epsilons else config.target_epsilon
 		sigma = compute_noise_level(
 			num_examples=num_examples,
 			batch_size=config.batch_size,
 			global_rounds=config.global_rounds,
 			local_steps=config.local_steps,
-			target_epsilon=config.target_epsilon,
+			target_epsilon=target_epsilon,
 			target_delta=config.target_delta,
 		)
 

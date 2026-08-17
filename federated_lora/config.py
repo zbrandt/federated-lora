@@ -31,7 +31,8 @@ class Config:
 	clip_norm: float = 1.0  # per-sample L2 clipping norm
 	# target_epsilon: float = 3.0
 	# add epsilons 
-	target_epsilons: list[float] = (1.0, 2.0, 4.0, 8.0) 
+	target_epsilon: float = 3.0 
+	client_epsilons: tuple[float, ...] | None = None 
 	target_delta: float = 1e-5
 
 	lr_a: float = 0.25

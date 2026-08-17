@@ -111,10 +111,11 @@ class Server:
 			# )
 			redistribute = getattr(self.method, 'redistribute', None)
 			if redistribute is not None:
+				client_models = {client.id: client.model for client in selected}
 				self.per_client_state, eval_state = redistribute(
 					server_model=self.model,
 					per_client_state = self.per_client_state,
-					uploads = uploads,
+					client_models = client_models,
 				)
 			# update the global model with the aggregated weights
 			load_trainable_state(self.model, eval_state)

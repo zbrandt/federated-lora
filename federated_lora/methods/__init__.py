@@ -6,6 +6,9 @@ from federated_lora.methods.ffa_lora import FFALoRA
 from federated_lora.methods.flora import FLoRA
 from federated_lora.methods.la_lora import LALoRA
 from federated_lora.methods.rolora import RoLoRA
+from federated_lora.methods.flexlora import FlexLoRA
+from federated_lora.methods.hetlora import HetLoRA
+from federated_lora.methods.rblora import RBLoRA
 
 _METHODS: dict[str, type[Method]] = {
 	'dp_lora': DPLoRA,
@@ -13,6 +16,10 @@ _METHODS: dict[str, type[Method]] = {
 	'rolora': RoLoRA,
 	'la_lora': LALoRA,
 	'flora': FLoRA,
+	'flexlora' : FlexLoRA, 
+	'hetlora' : HetLoRA,
+	'rblora' : RBLoRA,
+
 }
 
 
