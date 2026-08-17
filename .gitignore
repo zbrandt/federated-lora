@@ -175,7 +175,7 @@ pyrightconfig.json
 
 ### Federated LoRA ###
 # datasets
-./data
+/data
 
 # outputs
 logs
