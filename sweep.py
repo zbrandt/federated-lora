@@ -26,9 +26,15 @@ Two modes:
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 8;   exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py hetero; exec bash'
 
-Pass --rounds for a fast smoke test across all methods before committing a
-node to the full run, e.g. `sweep.py compare --eps 3 --rounds 5` or
-`sweep.py hetero --rounds 5`.
+Pass --smoke for a correctness+timing check before committing a node to a
+full run, e.g. `sweep.py compare --eps 3 --smoke` or `sweep.py hetero
+--smoke`. --smoke shrinks both rounds AND local_steps (2 rounds x 2 local
+steps x 4 clients = 16 sequential steps per method, instead of the full
+run's 100 x 20 x 4 = 8000) so a real failure surfaces in seconds, not
+after hours of a mostly-pointless deep run. It also caps each method at
+SMOKE_TIMEOUT_S wall-clock time and kills+moves on if that's exceeded,
+so a hung/thrashing node can't silently burn the rest of your smoke test
+budget -- you get a TIMEOUT verdict on that one method instead of nothing.
 """
 
 from __future__ import annotations
@@ -57,9 +63,21 @@ LR_A = 0.25
 LR_B = 0.25
 LR_HEAD = 0.15
 
+SMOKE_ROUNDS = 2
+SMOKE_LOCAL_STEPS = 2
+SMOKE_TIMEOUT_S = 600  # kill and move on if one method's smoke run exceeds this
+
 
 def run_experiment(
-    method, seed, output_dir, log_path, epsilon=None, client_epsilons=None, rounds=None
+    method,
+    seed,
+    output_dir,
+    log_path,
+    epsilon=None,
+    client_epsilons=None,
+    rounds=None,
+    local_steps=None,
+    timeout=None,
 ):
     """Launch one experiment.py run in its own process; stream output to log_path."""
     cmd = [
@@ -80,14 +98,26 @@ def run_experiment(
         cmd += ['--epsilon', str(epsilon)]
     if rounds is not None:
         cmd += ['--rounds', str(rounds)]
+    if local_steps is not None:
+        cmd += ['--local-steps', str(local_steps)]
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     tag = f'eps={epsilon}' if client_epsilons is None else f'client_eps={client_epsilons}'
     print(f'>>> {method:9} {tag} -> {log_path}', flush=True)
     with open(log_path, 'w') as log:
-        result = subprocess.run(
-            cmd, stdout=log, stderr=subprocess.STDOUT, cwd=REPO, check=False
-        )
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                cwd=REPO,
+                check=False,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            log.write(f'\n[sweep.py] killed after exceeding {timeout}s timeout\n')
+            print(f'    TIMEOUT after {timeout}s — see {log_path}', flush=True)
+            return False
     ok = result.returncode == 0
     print(
         f'    {"done" if ok else "FAILED — see " + str(log_path)}', flush=True
@@ -95,9 +125,12 @@ def run_experiment(
     return ok
 
 
-def compare(eps, rounds=None):
+def compare(eps, smoke=False):
     """5 methods at fixed lr, seed 42, 4 clients sharing one eps -> results/sweep/dp_compare/eps<e>/."""
     out = f'results/sweep/dp_compare/eps{eps}/'
+    rounds = SMOKE_ROUNDS if smoke else None
+    local_steps = SMOKE_LOCAL_STEPS if smoke else None
+    timeout = SMOKE_TIMEOUT_S if smoke else None
     for method in METHODS:
         log = (
             REPO
@@ -106,12 +139,18 @@ def compare(eps, rounds=None):
             / 'dp_compare'
             / f'{method}_{BENCHMARK}_eps{eps}_seed{SEED}.log'
         )
-        run_experiment(method, SEED, out, log, epsilon=eps, rounds=rounds)
+        run_experiment(
+            method, SEED, out, log, epsilon=eps,
+            rounds=rounds, local_steps=local_steps, timeout=timeout,
+        )
 
 
-def hetero(rounds=None):
+def hetero(smoke=False):
     """5 methods, one client_epsilons=[0.5,1,3,8] assignment -> results/sweep/dp_hetero/."""
     out = 'results/sweep/dp_hetero/'
+    rounds = SMOKE_ROUNDS if smoke else None
+    local_steps = SMOKE_LOCAL_STEPS if smoke else None
+    timeout = SMOKE_TIMEOUT_S if smoke else None
     for method in METHODS:
         log = (
             REPO
@@ -121,7 +160,8 @@ def hetero(rounds=None):
             / f'{method}_{BENCHMARK}_seed{SEED}.log'
         )
         run_experiment(
-            method, SEED, out, log, client_epsilons=CLIENT_EPSILONS, rounds=rounds
+            method, SEED, out, log, client_epsilons=CLIENT_EPSILONS,
+            rounds=rounds, local_steps=local_steps, timeout=timeout,
         )
 
 
@@ -137,19 +177,22 @@ def main():
         help='privacy budget for this node (required for "compare", unused for "hetero")',
     )
     parser.add_argument(
-        '--rounds',
-        type=int,
-        default=None,
-        help='override global_rounds for a fast smoke test (default: full 100 rounds)',
+        '--smoke',
+        action='store_true',
+        help=(
+            f'shrink to {SMOKE_ROUNDS} rounds x {SMOKE_LOCAL_STEPS} local steps '
+            f'and cap each method at {SMOKE_TIMEOUT_S}s; use before committing a '
+            'node to the full run'
+        ),
     )
     args = parser.parse_args()
 
     if args.mode == 'compare':
         if args.eps is None:
             parser.error('--eps is required for mode "compare"')
-        compare(args.eps, rounds=args.rounds)
+        compare(args.eps, smoke=args.smoke)
     else:
-        hetero(rounds=args.rounds)
+        hetero(smoke=args.smoke)
 
 
 if __name__ == '__main__':

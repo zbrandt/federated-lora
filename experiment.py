@@ -35,6 +35,7 @@ def parse_args():
 	parser.add_argument('--output-dir', type=str, default='results/')
 	parser.add_argument('--num-clients', type=int, default=20)
 	parser.add_argument('--rounds', type=int, default=100)
+	parser.add_argument('--local-steps', type=int, default=20)
 	parser.add_argument(
 		'--client-epsilons',
 		type=float,
@@ -59,6 +60,11 @@ def build(config: Config) -> Server:
 	torch.backends.cudnn.benchmark = False
 
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+	print(
+		f'device={device} cuda_available={torch.cuda.is_available()} '
+		f'gpu_name={torch.cuda.get_device_name(0) if torch.cuda.is_available() else "n/a"}',
+		flush=True,
+	)
 
 	method = get_method(config.method)
 
@@ -200,6 +206,7 @@ def run(args: list[str]) -> dict:
 		output_dir=args.output_dir,
 		num_clients=args.num_clients,
 		global_rounds=args.rounds,
+		local_steps=args.local_steps,
 		client_epsilons=tuple(args.client_epsilons)
 		if args.client_epsilons is not None
 		else None,
