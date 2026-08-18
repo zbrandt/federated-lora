@@ -25,12 +25,10 @@ from federated_lora.server import Server
 def parse_args():
 	parser = argparse.ArgumentParser()
 
-	parser.add_argument(
-		'--task', type=str, required=True, choices=['cifar100', 'sst2']
-	)
+	parser.add_argument('--task', type=str, required=True)
 	parser.add_argument('--method', type=str, required=True)
 	parser.add_argument('--batch-size', type=int, default=16)
-	parser.add_argument('--rounds', type=int, default=100)
+	# parser.add_argument('--rounds', type=int, default=100)
 	parser.add_argument('--epsilon', type=float, default=3.0)
 	parser.add_argument('--clipping', type=str, default='median')
 	parser.add_argument('--lr-a', type=float, default=0.20)
@@ -158,7 +156,7 @@ def run(args: list[str]) -> dict:
 		task=args.task,
 		method=args.method,
 		batch_size=args.batch_size,
-		global_rounds=args.rounds,
+		# global_rounds=args.rounds,
 		target_epsilon=args.epsilon,
 		lr_a=args.lr_a,
 		lr_b=args.lr_b,
