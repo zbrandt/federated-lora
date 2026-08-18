@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import time
 from collections import defaultdict
+from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
@@ -25,6 +26,7 @@ class Server:
 		test_dataloader: DataLoader,
 		device: str,
 		seed: int,
+		log_uploads_dir: str | None = None,
 	) -> None:
 		self.model = model
 		self.method = method
@@ -34,6 +36,9 @@ class Server:
 		self.test_dataloader = test_dataloader
 		self.device = device
 		self.seed = seed
+		self.log_uploads_dir = Path(log_uploads_dir) if log_uploads_dir else None
+		if self.log_uploads_dir is not None:
+			self.log_uploads_dir.mkdir(parents=True, exist_ok=True)
 		self.per_client_state: dict[int, dict[str, torch.Tensor]] = { client.id: get_trainable_state(client.model) for client in clients }
 
 	@staticmethod
@@ -104,6 +109,11 @@ class Server:
 			# aggregate client uploads into the new global state
 			# num_examples = [client.num_examples for client in selected]
 			num_examples = {client.id: client.num_examples for client in selected}
+			if self.log_uploads_dir is not None:
+				torch.save(
+					{'uploads': uploads, 'num_examples': num_examples},
+					self.log_uploads_dir / f'round{round:04d}.pt',
+				)
 			# aggregate all of the uploads, for different client states
 			self.per_client_state, eval_state = self.method.aggregate(uploads=uploads, num_examples=num_examples)
 			# agg = self.method.aggregate(

@@ -25,6 +25,13 @@ Three modes:
              RANK_SWEEP_EPS. One rank per node, 4 nodes total. Results
              -> results/sweep/dp_rank/rank<r>/, logs -> logs/sweep/dp_rank/.
 
+  grid     — homogeneous DP x homogeneous rank, crossed: every (eps, rank)
+             pair from the 4x4 grid, GRID_METHODS only (no ffa_lora -- it's
+             just along for the ride in the other sweeps, not a focus of the
+             rank axis). One (eps, rank) cell per node, 16 nodes for full
+             parallelism. Results -> results/sweep/dp_rank_grid/eps<e>_rank<r>/,
+             logs -> logs/sweep/dp_rank_grid/.
+
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 0.5; exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 1;   exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 3;   exec bash'
@@ -34,6 +41,10 @@ Three modes:
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 8;  exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 16; exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 32; exec bash'
+
+    # grid: one node per (eps, rank) pair, 16 total. Run
+    #   python sweep.py grid --list
+    # to print all 16 ready-to-paste tmux commands instead of typing them out.
 
 Pass --smoke for a correctness+timing check before committing a node to a
 full run, e.g. `sweep.py compare --eps 3 --smoke` or `sweep.py rank --rank 8
@@ -58,6 +69,12 @@ PYTHON = sys.executable  # use .venv/bin/python (or .venv/Scripts/python.exe) on
 
 BENCHMARK = 'cifar100'
 METHODS = ['rblora', 'hetlora', 'flora', 'flexlora', 'ffa_lora']
+# grid mode drops ffa_lora: it doesn't do anything rank-aware (plain
+# Server.fedavg(), same behavior at every rank), so it's not informative on
+# the rank axis and would just be 16 extra no-signal runs.
+GRID_METHODS = ['rblora', 'hetlora', 'flora', 'flexlora']
+EPS_VALUES = [0.5, 1.0, 3.0, 8.0]
+RANK_VALUES = [2, 8, 16, 32]
 NUM_CLIENTS = 4
 SEED = 42
 
@@ -203,22 +220,57 @@ def rank(r, smoke=False):
         )
 
 
+def grid(eps, r, smoke=False):
+    """GRID_METHODS at fixed (eps, rank), homogeneous on both axes -> results/sweep/dp_rank_grid/eps<e>_rank<r>/."""
+    out = f'results/sweep/dp_rank_grid/eps{eps}_rank{r}/'
+    rounds = SMOKE_ROUNDS if smoke else None
+    local_steps = SMOKE_LOCAL_STEPS if smoke else None
+    timeout = SMOKE_TIMEOUT_S if smoke else None
+    for method in GRID_METHODS:
+        log = (
+            REPO
+            / 'logs'
+            / 'sweep'
+            / 'dp_rank_grid'
+            / f'{method}_{BENCHMARK}_eps{eps}_rank{r}_seed{SEED}.log'
+        )
+        run_experiment(
+            method, SEED, out, log, epsilon=eps, lora_rank=r,
+            rounds=rounds, local_steps=local_steps, timeout=timeout,
+        )
+
+
+def print_grid_commands():
+    """Print all 16 ready-to-paste tmux launch lines for the full (eps, rank) grid."""
+    for eps in EPS_VALUES:
+        for r in RANK_VALUES:
+            print(
+                "tmux new-session -d -s run -c ~/federated-lora "
+                f"'.venv/bin/python sweep.py grid --eps {eps} --rank {r}; exec bash'"
+            )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Drive DP federated-LoRA experiments.'
     )
-    parser.add_argument('mode', choices=['compare', 'hetero', 'rank'])
+    parser.add_argument('mode', choices=['compare', 'hetero', 'rank', 'grid'])
     parser.add_argument(
         '--eps',
         type=float,
-        choices=[0.5, 1.0, 3.0, 8.0],
-        help='privacy budget for this node (required for "compare", unused otherwise)',
+        choices=EPS_VALUES,
+        help='privacy budget for this node (required for "compare"/"grid", unused otherwise)',
     )
     parser.add_argument(
         '--rank',
         type=int,
-        choices=[2, 8, 16, 32],
-        help='LoRA rank for this node (required for "rank", unused otherwise)',
+        choices=RANK_VALUES,
+        help='LoRA rank for this node (required for "rank"/"grid", unused otherwise)',
+    )
+    parser.add_argument(
+        '--list',
+        action='store_true',
+        help='"grid" mode only: print all 16 ready-to-paste tmux launch commands and exit, without running anything',
     )
     parser.add_argument(
         '--smoke',
@@ -231,6 +283,10 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.mode == 'grid' and args.list:
+        print_grid_commands()
+        return
+
     if args.mode == 'compare':
         if args.eps is None:
             parser.error('--eps is required for mode "compare"')
@@ -239,6 +295,10 @@ def main():
         if args.rank is None:
             parser.error('--rank is required for mode "rank"')
         rank(args.rank, smoke=args.smoke)
+    elif args.mode == 'grid':
+        if args.eps is None or args.rank is None:
+            parser.error('--eps and --rank are both required for mode "grid" (or pass --list to print all commands)')
+        grid(args.eps, args.rank, smoke=args.smoke)
     else:
         hetero(smoke=args.smoke)
 

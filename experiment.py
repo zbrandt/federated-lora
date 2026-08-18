@@ -44,6 +44,19 @@ def parse_args():
 		default=None,
 		help='per-client DP epsilon, one value per client (overrides --epsilon; length must equal --num-clients)',
 	)
+	parser.add_argument(
+		'--client-ranks',
+		type=int,
+		nargs='+',
+		default=None,
+		help='per-client LoRA rank, one value per client (overrides --lora-rank; length must equal --num-clients)',
+	)
+	parser.add_argument(
+		'--log-uploads-dir',
+		type=str,
+		default=None,
+		help='if set, save each round raw per-client (lora_A, lora_B, ...) uploads before aggregation to this directory, for offline aggregation-error analysis',
+	)
 
 	return parser.parse_args()
 
@@ -190,6 +203,7 @@ def build(config: Config) -> Server:
 		test_dataloader=test_dataloader,
 		device=device,
 		seed=config.seed,
+		log_uploads_dir=config.log_uploads_dir,
 	)
 
 
@@ -212,6 +226,10 @@ def run(args: list[str]) -> dict:
 		client_epsilons=tuple(args.client_epsilons)
 		if args.client_epsilons is not None
 		else None,
+		client_ranks=tuple(args.client_ranks)
+		if args.client_ranks is not None
+		else None,
+		log_uploads_dir=args.log_uploads_dir,
 	)
 	server = build(config)
 	history = server.run()

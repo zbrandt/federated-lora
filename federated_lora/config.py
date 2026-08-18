@@ -38,3 +38,5 @@ class Config:
 	lr_a: float = 0.25
 	lr_b: float = 0.25
 	lr_head: float = 0.15
+
+	log_uploads_dir: str | None = None  # if set, dump raw per-client uploads each round for offline aggregation-error analysis
