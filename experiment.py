@@ -35,6 +35,13 @@ def parse_args():
 	parser.add_argument('--output-dir', type=str, default='results/')
 	parser.add_argument('--num-clients', type=int, default=20)
 	parser.add_argument('--rounds', type=int, default=100)
+	parser.add_argument(
+		'--client-epsilons',
+		type=float,
+		nargs='+',
+		default=None,
+		help='per-client DP epsilon, one value per client (overrides --epsilon; length must equal --num-clients)',
+	)
 
 	return parser.parse_args()
 
@@ -193,6 +200,9 @@ def run(args: list[str]) -> dict:
 		output_dir=args.output_dir,
 		num_clients=args.num_clients,
 		global_rounds=args.rounds,
+		client_epsilons=tuple(args.client_epsilons)
+		if args.client_epsilons is not None
+		else None,
 	)
 	server = build(config)
 	history = server.run()
