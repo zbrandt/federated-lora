@@ -33,6 +33,8 @@ def parse_args():
 	parser.add_argument('--lr-head', type=float, default=0.15)
 	parser.add_argument('--seed', type=int, default=42)
 	parser.add_argument('--output-dir', type=str, default='results/')
+	parser.add_argument('--num-clients', type=int, default=20)
+	parser.add_argument('--rounds', type=int, default=100)
 
 	return parser.parse_args()
 
@@ -186,8 +188,11 @@ def run(args: list[str]) -> dict:
 		target_epsilon=args.epsilon,
 		lr_a=args.lr_a,
 		lr_b=args.lr_b,
+		lr_head=args.lr_head,
 		seed=args.seed,
 		output_dir=args.output_dir,
+		num_clients=args.num_clients,
+		global_rounds=args.rounds,
 	)
 	server = build(config)
 	history = server.run()
