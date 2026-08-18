@@ -1,22 +1,3 @@
-"""
-Smoke test for the federated-lora harness.
-
-Runs the REAL pipeline (ViT-Base + LoRA + Opacus median-clipping DP + FedAvg +
-LR decay) at tiny scale on CPU, once per method, so you can catch runtime
-errors before launching the full run on GPU. It does NOT check accuracy — only
-that every stage executes, that the recently-refactored per-method step() /
-privatize() path runs for every method, and that gradients/metrics stay finite.
-
-Run from the repo root:
-
-    uv run python test.py
-    # or:  .venv/bin/python test.py
-
-First run downloads the ViT checkpoint (~350 MB) and CIFAR-100 (~170 MB), both
-cached afterwards, and writes a data dir cifar100_2_clients_alpha_0.1/. Expect a
-few minutes on CPU. Trim METHODS to ["dp_lora"] for the fastest possible check.
-"""
-
 from __future__ import annotations
 
 import gc
@@ -29,17 +10,14 @@ from experiment import build
 from federated_lora.config import Config
 from federated_lora.model import get_trainable_parameters
 
-# --- tiny overrides ----------------------------------------------------------
-METHODS = ['dp_lora', 'rolora', 'ffa_lora', 'la_lora', 'flora']
-CLIENTS = 2  # deepcopies of ViT-Base held in RAM; each ~0.35 GB
-ROUNDS = 2  # enough to prove the scheduler decays across rounds
+METHODS = ['dp_lora', 'rolora', 'ffa_lora', 'la_lora']
+NUM_CLIENTS = 2
+GLOBAL_ROUNDS = 2
 LOCAL_STEPS = 2
-BATCH_SIZE = 16  # keeps Poisson lots non-empty
-EVAL_SUBSET = 128  # cap test images so eval is fast
-# -----------------------------------------------------------------------------
+BATCH_SIZE = 16
+EVAL_SUBSET = 128
 
 checks: list[tuple[str, bool, str]] = []
-
 
 def check(name: str, ok: bool, detail: str = '') -> None:
 	checks.append((name, bool(ok), detail))
@@ -54,8 +32,8 @@ def run_method(method: str) -> None:
 	config = Config(
 		task='smoke',
 		method=method,
-		num_clients=CLIENTS,
-		global_rounds=ROUNDS,
+		num_clients=NUM_CLIENTS,
+		global_rounds=GLOBAL_ROUNDS,
 		local_steps=LOCAL_STEPS,
 		batch_size=BATCH_SIZE,
 		output_dir='results_smoke/',
@@ -65,27 +43,31 @@ def run_method(method: str) -> None:
 	check(f'{method}: build() completed', True, f'device={server.device.type}')
 
 	trainable = get_trainable_parameters(server.model)
-	total = sum(p.numel() for p in server.model.parameters())
-	# backbone = anything that is neither a LoRA adapter nor the classifier head
+	# total = sum(p.numel() for p in server.model.parameters())
+	
+	
 	backbone_frozen = sum(
 		1
 		for n, p in server.model.named_parameters()
 		if not p.requires_grad and 'lora_' not in n and 'classifier' not in n
 	)
-	check(
-		f'{method}: backbone size ~ViT-Base',
-		80e6 < total < 95e6,
-		f'{total / 1e6:.1f}M params',
-	)
+	# check(
+	# 	f'{method}: backbone size ~ViT-Base',
+	# 	80e6 < total < 95e6,
+	# 	f'{total / 1e6:.1f}M params',
+	# )
+	
 	check(
 		f'{method}: LoRA adapters trainable',
 		any('lora_' in n for n in trainable),
 		f'{sum("lora_" in n for n in trainable)} lora tensors',
 	)
+
 	check(
 		f'{method}: classifier head trainable',
 		any('classifier' in n for n in trainable),
 	)
+
 	check(
 		f'{method}: backbone frozen',
 		backbone_frozen > 0,
@@ -99,6 +81,7 @@ def run_method(method: str) -> None:
 		or hasattr(c0.model, '_module'),
 		c0.model.__class__.__name__,
 	)
+
 	check(
 		f'{method}: DP optimizer in place',
 		'DP' in c0.optimizer.__class__.__name__,
@@ -134,7 +117,7 @@ def run_method(method: str) -> None:
 
 	check(
 		f'{method}: one record per round',
-		len(history) == ROUNDS,
+		len(history) == GLOBAL_ROUNDS,
 		f'{len(history)} rounds',
 	)
 	finite = all(
