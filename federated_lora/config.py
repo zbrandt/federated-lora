@@ -43,19 +43,19 @@ class Config:
 	task: str = 'cifar100'
 	experiment: str = 'vision'
 	dataset: str = 'uoft-cs/cifar100'
-	eval_split: str  = 'test' # split used for evaluation
+	eval_split: str = 'test'  # split used for evaluation
 	label_field: str = 'fine_label'  # label column in the raw dataset
-	text_fields: tuple[str, ...] = () # input text column(s) for text tasks
-	num_labels: int = 100 # number of labels to use in the last layer added to the model, typically for a classification task
+	text_fields: tuple[str, ...] = ()  # input text column(s) for text tasks
+	num_labels: int = 100  # number of labels to use in the last layer added to the model, typically for a classification task
 	model: str = 'microsoft/swin-tiny-patch4-window7-224'
 	target_modules: tuple[str, str] = ('query', 'value')
 
 	num_clients: int = 8
-	global_rounds: int = 20
+	global_rounds: int = 100
 	local_steps: int = 20
 	client_sample_rate: float = 0.5
 	dirichlet_alpha: float = 0.1
-	
+
 	lora_rank: int = 16
 	lora_alpha: int = 16
 	lora_dropout: float = 0.05
