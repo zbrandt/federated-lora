@@ -10,6 +10,31 @@ from experiment import build
 from federated_lora.config import Config
 from federated_lora.model import get_trainable_parameters
 
+TASKS: dict[str, dict] = {
+	'cifar100': {
+		'experiment': 'vision',
+		'dataset': 'uoft-cs/cifar100',
+		'eval_split': 'test',
+		'label_field': 'fine_label',
+		'text_fields': (),
+		'num_labels': 100,
+		# 'model': 'google/vit-base-patch16-224-in21k',
+		'model': 'microsoft/swin-tiny-patch4-window7-224',
+		'target_modules': ('query', 'value'),
+	},
+	'sst2': {
+		'experiment': 'text',
+		'dataset': 'nyu-mll/glue',
+		'eval_split': 'validation',
+		'label_field': 'label',
+		'text_fields': ('sentence',),
+		'num_labels': 2,
+		'model': 'FacebookAI/roberta-base',
+		'target_modules': ('query', 'value'),
+	},
+}
+
+TASK = "cifar100"
 METHODS = ['dp_lora', 'rolora', 'ffa_lora', 'la_lora']
 NUM_CLIENTS = 2
 GLOBAL_ROUNDS = 2
@@ -30,14 +55,17 @@ def check(name: str, ok: bool, detail: str = '') -> None:
 def run_method(method: str) -> None:
 	print(f'\n=== {method} ===')
 	config = Config(
-		task='smoke',
+		task=TASK,
 		method=method,
 		num_clients=NUM_CLIENTS,
 		global_rounds=GLOBAL_ROUNDS,
 		local_steps=LOCAL_STEPS,
 		batch_size=BATCH_SIZE,
-		output_dir='results_smoke/',
+		output_dir=f'results/smoke/{TASK}',
 	)
+
+	for key, value in TASKS[TASK].items():
+		setattr(config, key, value)
 
 	server = build(config)
 	check(f'{method}: build() completed', True, f'device={server.device.type}')
