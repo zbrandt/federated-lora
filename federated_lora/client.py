@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 
 from federated_lora.data import cycle
-from federated_lora.method import Method
+from federated_lora.methods import Method
 from federated_lora.metrics import summarize_diagnostics
 from federated_lora.model import get_trainable_state
 
@@ -69,6 +69,7 @@ class Client:
 			batch = {
 				key: value.to(self.device) for key, value in batch.items()
 			}
+			batch_size = next(iter(batch.values())).shape[0]
 
 			self.optimizer.zero_grad(set_to_none=True)
 			out = self.model(**batch)
@@ -80,6 +81,7 @@ class Client:
 				optimizer=self.optimizer,
 				round=round,
 				step=step,
+				batch_size=batch_size,
 			)
 
 			# privatize() stashes this step's clipping/grad-norm diagnostics on

@@ -24,8 +24,9 @@ class DPLoRA:
 		optimizer: DPOptimizer,
 		round: int,
 		step: int,
+		batch_size: int,
 	) -> None:
-		params = privatize(model, optimizer)
+		params = privatize(model, optimizer, batch_size)
 		if params is None:
 			return
 

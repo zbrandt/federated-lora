@@ -4,12 +4,12 @@ import random
 import time
 
 import torch
+from federated_lora.methods import Method
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 
 from federated_lora.client import Client
 from federated_lora.eval import evaluate
-from federated_lora.method import Method
 from federated_lora.metrics import aggregate_diags
 from federated_lora.model import get_trainable_state, load_trainable_state
 

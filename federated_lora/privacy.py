@@ -63,6 +63,7 @@ def compute_noise_level(
 def privatize(
 	model: GradSampleModule,
 	optimizer: DPOptimizer,
+	batch_size: int,
 ) -> list[nn.Parameter] | None:
 	"""
 	Clip per sample gradients and add Gaussian noise.
@@ -81,6 +82,9 @@ def privatize(
 	optimizer : DPOptimizer
 		The wrapped optimizer carrying the noise multiplier and expected batch
 		size.
+	batch_size : int
+		The number of training examples processed before parameters are updated.
+
 
 	Returns
 	-------
@@ -90,6 +94,7 @@ def privatize(
 	named = {}
 	for n, p in model.named_parameters():
 		if p.requires_grad and getattr(p, 'grad_sample', None) is not None:
+			p.grad_sample = dewindow_grad_sample(p.grad_sample, batch_size)
 			named[n] = p
 
 	if not named:
@@ -113,6 +118,55 @@ def privatize(
 	}
 
 	return params
+
+
+def dewindow_grad_sample(
+	grad_sample: torch.Tensor, batch_size: int
+) -> torch.Tensor:
+	"""
+	Collapse a ``grad_sample`` with a windowed leading dimension back to one row
+	per example.
+
+	Windowed attention folds windows into the batch dimension before transformer
+	blocks, so Opacus sees shape (``batch_size`` * ``num_windows``, ``tokens``,
+	``C``) instead of (``batch_size``, ``tokens``, ``C``) for those layers.
+
+	Hugging Face's Swin transformer's ``window_partition`` is batch-major, so
+	each ``num_windows``-sized run of rows belongs to one example. Summing it
+	recovers the true per-example gradient, the same way Opacus already sums
+	over the token axis within one window via ``einsum`` contraction.
+
+	A ``grad_sample`` with leading dimension already equal to batch_size passes
+	through unchanged.
+
+	Parameters
+	----------
+	grad_sample : torch.Tensor
+		The per-example gradients computed for a parameter during the backward
+		pass.
+	batch_size : int
+		The number of training examples processed before parameters are updated.
+
+	Returns
+	-------
+	torch.Tensor
+		A recovered gradient sample from summing over the windows dimension.
+	"""
+	n = grad_sample.shape[0]
+	if n == batch_size:
+		return grad_sample
+
+	# if batch_size == 0 or n % batch_size != 0:
+	# 	raise ValueError(
+	# 		f'grad_sample leading dim {n} is not a multiple of the realized '
+	# 		f'batch size {batch_size}; cannot infer a window count.'
+	# 	)
+
+	num_windows = n // batch_size
+	reshaped = grad_sample.reshape(
+		batch_size, num_windows, *grad_sample.shape[1:]
+	)
+	return reshaped.sum(dim=1)
 
 
 def clip_and_accumulate(
