@@ -36,6 +36,7 @@ def parse_args():
 	parser.add_argument('--num-clients', type=int, default=20)
 	parser.add_argument('--rounds', type=int, default=100)
 	parser.add_argument('--local-steps', type=int, default=20)
+	parser.add_argument('--lora-rank', type=int, default=8)
 	parser.add_argument(
 		'--client-epsilons',
 		type=float,
