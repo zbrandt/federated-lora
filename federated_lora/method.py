@@ -26,7 +26,13 @@ class Method(Protocol):
 		...
 
 	def step(
-		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
+		self,
+		model: nn.Module,
+		optimizer: DPOptimizer,
+		round: int,
+		step: int,
+		total_steps: int | None = None,
+		target_rank: int | None = None,
 	) -> None:
 		"""
 		Perform a single optimization step to update trainable parameters.
@@ -42,6 +48,13 @@ class Method(Protocol):
 			The current global communication round.
 		step : int
 			The current local step.
+		total_steps : int | None
+			The total number of local steps this round. Used by methods that
+			schedule behavior (e.g. rank pruning) across the local round.
+		target_rank : int | None
+			This client's target LoRA rank, if the method supports per-client
+			rank heterogeneity via local pruning. ``None`` for methods/clients
+			that don't prune.
 		"""
 		...
 

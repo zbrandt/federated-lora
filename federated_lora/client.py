@@ -24,6 +24,7 @@ class Client:
 		num_examples: float,
 		steps: int,
 		device: torch.device,
+		target_rank: int | None = None,
 	) -> None:
 		self.id = id
 		self.model = model
@@ -33,6 +34,7 @@ class Client:
 		self.num_examples = num_examples
 		self.steps = steps
 		self.device = device
+		self.target_rank = target_rank
 
 	def local_update(
 		self,
@@ -62,6 +64,8 @@ class Client:
 				optimizer=self.optimizer,
 				round=round,
 				step=step,
+				total_steps=self.steps,
+				target_rank=self.target_rank,
 			)
 
 			self.optimizer.zero_grad(set_to_none=True)

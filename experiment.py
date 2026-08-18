@@ -80,11 +80,29 @@ def build(config: Config) -> Server:
 		batch_size=config.batch_size,
 	)
 
+	prunes = getattr(method, 'prunes', False)
+
 	clients = []
 	for i, dataloader in enumerate(train_dataloaders):
 		# if client ranks exists, have it vary for client
 		# if not, use the default lora_rank from config
-		if config.client_ranks:
+		target_rank = None
+		if config.client_ranks and prunes:
+			# pruning methods need headroom to prune from: build every client
+			# at the shared max rank and let local training self-prune down
+			# to this client's own target rank each round.
+			target_rank = config.client_ranks[i]
+			local_model = create_peft_model(
+				name=config.model,
+				num_labels=config.num_labels,
+				lora_rank=eval_rank,
+				target_modules=config.target_modules,
+				lora_alpha=config.lora_alpha,
+				lora_dropout=config.lora_dropout,
+				method=method,
+				device=device,
+			).to('cpu')
+		elif config.client_ranks:
 			lora_rank = config.client_ranks[i]
 			local_model = create_peft_model(
 				name=config.model,
@@ -143,6 +161,7 @@ def build(config: Config) -> Server:
 				num_examples=num_examples,
 				steps=config.local_steps,
 				device=device,
+				target_rank=target_rank,
 			)
 		)
 

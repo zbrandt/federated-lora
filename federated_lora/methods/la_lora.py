@@ -37,7 +37,13 @@ class LALoRA:
 			return filtered
 
 	def step(
-		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
+		self,
+		model: nn.Module,
+		optimizer: DPOptimizer,
+		round: int,
+		step: int,
+		total_steps: int | None = None,
+		target_rank: int | None = None,
 	) -> None:
 		""" """
 		if optimizer.pre_step():

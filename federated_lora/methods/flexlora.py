@@ -27,7 +27,13 @@ class FlexLoRA:
 				parameter.requires_grad = False
 
 	def step(
-		self, model: nn.Module, optimizer: DPOptimizer, round: int, step: int
+		self,
+		model: nn.Module,
+		optimizer: DPOptimizer,
+		round: int,
+		step: int,
+		total_steps: int | None = None,
+		target_rank: int | None = None,
 	) -> None:
 		"""
 		Perform a single optimization step to update trainable parameters.
