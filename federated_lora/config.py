@@ -29,7 +29,6 @@ TASKS: dict[str, dict] = {
 
 @dataclass(slots=True)
 class Config:
-	task: str
 	method: str
 	batch_size: int
 	target_epsilon: float | None
@@ -40,13 +39,16 @@ class Config:
 	seed: int
 	output_dir: str
 
-	experiment: str
-	dataset: str
-	eval_split: str  # split used for evaluation
-	label_field: str  # label column in the raw dataset
-	text_fields: tuple[str, ...]  # input text column(s) for text tasks
-	num_labels: int  # number of labels to use in the last layer added to the model, typically for a classification task
-	model: str
+	# set default task to image classification on cifar100
+	task: str = 'cifar100'
+	experiment: str = 'vision'
+	dataset: str = 'uoft-cs/cifar100'
+	eval_split: str  = 'test' # split used for evaluation
+	label_field: str = 'fine_label'  # label column in the raw dataset
+	text_fields: tuple[str, ...] = () # input text column(s) for text tasks
+	num_labels: int = 100 # number of labels to use in the last layer added to the model, typically for a classification task
+	model: str = 'microsoft/swin-tiny-patch4-window7-224'
+	target_modules: tuple[str, str] = ('query', 'value')
 
 	num_clients: int = 8
 	global_rounds: int = 20
@@ -56,7 +58,6 @@ class Config:
 	
 	lora_rank: int = 16
 	lora_alpha: int = 16
-	target_modules: tuple[str, ...] = ('query', 'value')
 	lora_dropout: float = 0.05
 
 	max_grad_norm: float = 4.0
