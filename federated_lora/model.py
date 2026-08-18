@@ -8,7 +8,7 @@ from transformers import (
 	AutoModelForSequenceClassification,
 )
 
-from federated_lora.methods import Method
+from federated_lora.method import Method
 
 
 def create_peft_model(
