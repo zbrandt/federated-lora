@@ -32,6 +32,23 @@ Three modes:
              parallelism. Results -> results/sweep/dp_rank_grid/eps<e>_rank<r>/,
              logs -> logs/sweep/dp_rank_grid/.
 
+  spread-grid — epsilon-spread x rank-spread, crossed: instead of every
+             client sharing one epsilon/rank, each spread level splits the 4
+             clients into 2 above / 2 below a fixed mean (MEAN_EPS/MEAN_RANK),
+             with the gap controlled by gamma (epsilon spread level, 0..1) and
+             kappa (rank spread level, 0..1) -- 0 means everyone at the mean
+             (identical to the "grid" cell at that mean), 1 means maximum
+             dispersion down to EPS_FLOOR/RANK_FLOOR. This isolates the effect
+             of *heterogeneity itself* from the effect of the population's
+             average privacy/rank budget, since the mean is held fixed at
+             every spread level. GRID_METHODS only (needs rank-aware
+             aggregation, same reasoning as "grid"). One (gamma, kappa) cell
+             per node, 16 nodes for full parallelism. The (gamma=0, kappa=0)
+             cell is identical to "grid"'s (eps=MEAN_EPS, rank=MEAN_RANK)
+             cell -- no need to re-run it if you already have that data.
+             Results -> results/sweep/dp_spread_grid/gamma<g>_kappa<k>/,
+             logs -> logs/sweep/dp_spread_grid/.
+
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 0.5; exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 1;   exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 3;   exec bash'
@@ -44,6 +61,10 @@ Three modes:
 
     # grid: one node per (eps, rank) pair, 16 total. Run
     #   python sweep.py grid --list
+    # to print all 16 ready-to-paste tmux commands instead of typing them out.
+
+    # spread-grid: one node per (gamma, kappa) pair, 16 total. Run
+    #   python sweep.py spread-grid --list
     # to print all 16 ready-to-paste tmux commands instead of typing them out.
 
 Pass --smoke for a correctness+timing check before committing a node to a
@@ -87,6 +108,16 @@ CLIENT_EPSILONS = [0.5, 1.0, 3.0, 8.0]
 # middle value of the --eps grid used elsewhere.
 RANK_SWEEP_EPS = 3.0
 
+# spread-grid: mean epsilon/rank held fixed across every spread level (only
+# dispersion changes), and the floor each axis can't cross even at max
+# spread. Chosen to match an already-run "grid" cell (eps=3.0, rank=16) so
+# spread=0 on both axes reuses that data instead of re-running it.
+MEAN_EPS = 3.0
+EPS_FLOOR = 0.5
+MEAN_RANK = 16
+RANK_FLOOR = 2
+SPREAD_LEVELS = [0.0, 0.33, 0.66, 1.0]
+
 # Config defaults (lr_a=0.25, lr_b=0.25, lr_head=0.15) are used for every
 # method/epsilon/rank cell -- no per-method LR search for this comparison.
 LR_A = 0.25
@@ -106,6 +137,7 @@ def run_experiment(
     epsilon=None,
     client_epsilons=None,
     lora_rank=None,
+    client_ranks=None,
     rounds=None,
     local_steps=None,
     timeout=None,
@@ -127,7 +159,9 @@ def run_experiment(
         cmd += ['--client-epsilons'] + [str(e) for e in client_epsilons]
     else:
         cmd += ['--epsilon', str(epsilon)]
-    if lora_rank is not None:
+    if client_ranks is not None:
+        cmd += ['--client-ranks'] + [str(r) for r in client_ranks]
+    elif lora_rank is not None:
         cmd += ['--lora-rank', str(lora_rank)]
     if rounds is not None:
         cmd += ['--rounds', str(rounds)]
@@ -136,7 +170,9 @@ def run_experiment(
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     tag = f'eps={epsilon}' if client_epsilons is None else f'client_eps={client_epsilons}'
-    if lora_rank is not None:
+    if client_ranks is not None:
+        tag += f' client_ranks={client_ranks}'
+    elif lora_rank is not None:
         tag += f' rank={lora_rank}'
     print(f'>>> {method:9} {tag} -> {log_path}', flush=True)
     with open(log_path, 'w') as log:
@@ -250,11 +286,58 @@ def print_grid_commands():
             )
 
 
+def make_spread(num_clients, mean, spread, floor, round_int=False):
+    """2 clients at mean+delta, 2 at mean-delta; mean stays fixed, delta scales with spread (0=identical, 1=max dispersion down to floor)."""
+    if spread <= 0:
+        values = [mean] * num_clients
+    else:
+        delta = min(spread * mean, mean - floor)
+        half = num_clients // 2
+        values = [mean + delta] * half + [mean - delta] * (num_clients - half)
+    if round_int:
+        values = [max(floor, round(v)) for v in values]
+    return values
+
+
+def spread_grid(gamma, kappa, smoke=False):
+    """GRID_METHODS at fixed (gamma, kappa) spread levels around MEAN_EPS/MEAN_RANK -> results/sweep/dp_spread_grid/gamma<g>_kappa<k>/."""
+    client_epsilons = make_spread(NUM_CLIENTS, MEAN_EPS, gamma, EPS_FLOOR)
+    client_ranks = make_spread(NUM_CLIENTS, MEAN_RANK, kappa, RANK_FLOOR, round_int=True)
+
+    out = f'results/sweep/dp_spread_grid/gamma{gamma}_kappa{kappa}/'
+    rounds = SMOKE_ROUNDS if smoke else None
+    local_steps = SMOKE_LOCAL_STEPS if smoke else None
+    timeout = SMOKE_TIMEOUT_S if smoke else None
+    for method in GRID_METHODS:
+        log = (
+            REPO
+            / 'logs'
+            / 'sweep'
+            / 'dp_spread_grid'
+            / f'{method}_{BENCHMARK}_gamma{gamma}_kappa{kappa}_seed{SEED}.log'
+        )
+        run_experiment(
+            method, SEED, out, log,
+            client_epsilons=client_epsilons, client_ranks=client_ranks,
+            rounds=rounds, local_steps=local_steps, timeout=timeout,
+        )
+
+
+def print_spread_grid_commands():
+    """Print all 16 ready-to-paste tmux launch lines for the full (gamma, kappa) spread grid."""
+    for gamma in SPREAD_LEVELS:
+        for kappa in SPREAD_LEVELS:
+            print(
+                "tmux new-session -d -s run -c ~/federated-lora "
+                f"'.venv/bin/python sweep.py spread-grid --gamma {gamma} --kappa {kappa}; exec bash'"
+            )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Drive DP federated-LoRA experiments.'
     )
-    parser.add_argument('mode', choices=['compare', 'hetero', 'rank', 'grid'])
+    parser.add_argument('mode', choices=['compare', 'hetero', 'rank', 'grid', 'spread-grid'])
     parser.add_argument(
         '--eps',
         type=float,
@@ -268,9 +351,21 @@ def main():
         help='LoRA rank for this node (required for "rank"/"grid", unused otherwise)',
     )
     parser.add_argument(
+        '--gamma',
+        type=float,
+        choices=SPREAD_LEVELS,
+        help='epsilon spread level for this node, 0..1 (required for "spread-grid", unused otherwise)',
+    )
+    parser.add_argument(
+        '--kappa',
+        type=float,
+        choices=SPREAD_LEVELS,
+        help='rank spread level for this node, 0..1 (required for "spread-grid", unused otherwise)',
+    )
+    parser.add_argument(
         '--list',
         action='store_true',
-        help='"grid" mode only: print all 16 ready-to-paste tmux launch commands and exit, without running anything',
+        help='"grid"/"spread-grid" modes only: print all 16 ready-to-paste tmux launch commands and exit, without running anything',
     )
     parser.add_argument(
         '--smoke',
@@ -286,6 +381,9 @@ def main():
     if args.mode == 'grid' and args.list:
         print_grid_commands()
         return
+    if args.mode == 'spread-grid' and args.list:
+        print_spread_grid_commands()
+        return
 
     if args.mode == 'compare':
         if args.eps is None:
@@ -299,6 +397,10 @@ def main():
         if args.eps is None or args.rank is None:
             parser.error('--eps and --rank are both required for mode "grid" (or pass --list to print all commands)')
         grid(args.eps, args.rank, smoke=args.smoke)
+    elif args.mode == 'spread-grid':
+        if args.gamma is None or args.kappa is None:
+            parser.error('--gamma and --kappa are both required for mode "spread-grid" (or pass --list to print all commands)')
+        spread_grid(args.gamma, args.kappa, smoke=args.smoke)
     else:
         hetero(smoke=args.smoke)
 
