@@ -286,6 +286,13 @@ def print_grid_commands():
             )
 
 
+def grid_all(smoke=False):
+    """All 16 (eps, rank) cells sequentially on one node -- 16 cells x 4 methods x 100 rounds, one after another."""
+    for eps in EPS_VALUES:
+        for r in RANK_VALUES:
+            grid(eps, r, smoke=smoke)
+
+
 def make_spread(num_clients, mean, spread, floor, round_int=False):
     """2 clients at mean+delta, 2 at mean-delta; mean stays fixed, delta scales with spread (0=identical, 1=max dispersion down to floor)."""
     if spread <= 0:
@@ -333,6 +340,13 @@ def print_spread_grid_commands():
             )
 
 
+def spread_grid_all(smoke=False):
+    """All 16 (gamma, kappa) cells sequentially on one node -- 16 cells x 4 methods x 100 rounds, one after another."""
+    for gamma in SPREAD_LEVELS:
+        for kappa in SPREAD_LEVELS:
+            spread_grid(gamma, kappa, smoke=smoke)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Drive DP federated-LoRA experiments.'
@@ -368,6 +382,11 @@ def main():
         help='"grid"/"spread-grid" modes only: print all 16 ready-to-paste tmux launch commands and exit, without running anything',
     )
     parser.add_argument(
+        '--all',
+        action='store_true',
+        help='"grid"/"spread-grid" modes only: run all 16 cells sequentially on this one node instead of just one',
+    )
+    parser.add_argument(
         '--smoke',
         action='store_true',
         help=(
@@ -394,13 +413,19 @@ def main():
             parser.error('--rank is required for mode "rank"')
         rank(args.rank, smoke=args.smoke)
     elif args.mode == 'grid':
-        if args.eps is None or args.rank is None:
-            parser.error('--eps and --rank are both required for mode "grid" (or pass --list to print all commands)')
-        grid(args.eps, args.rank, smoke=args.smoke)
+        if args.all:
+            grid_all(smoke=args.smoke)
+        elif args.eps is None or args.rank is None:
+            parser.error('--eps and --rank are both required for mode "grid" (or pass --all to run every cell on this node, or --list to print all commands)')
+        else:
+            grid(args.eps, args.rank, smoke=args.smoke)
     elif args.mode == 'spread-grid':
-        if args.gamma is None or args.kappa is None:
-            parser.error('--gamma and --kappa are both required for mode "spread-grid" (or pass --list to print all commands)')
-        spread_grid(args.gamma, args.kappa, smoke=args.smoke)
+        if args.all:
+            spread_grid_all(smoke=args.smoke)
+        elif args.gamma is None or args.kappa is None:
+            parser.error('--gamma and --kappa are both required for mode "spread-grid" (or pass --all to run every cell on this node, or --list to print all commands)')
+        else:
+            spread_grid(args.gamma, args.kappa, smoke=args.smoke)
     else:
         hetero(smoke=args.smoke)
 
