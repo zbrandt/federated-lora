@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 
 from federated_lora.data import cycle
-from federated_lora.methods import Method
+from federated_lora.method import Method
 from federated_lora.metrics import summarize_diagnostics
 from federated_lora.model import get_trainable_state
 

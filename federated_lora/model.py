@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from federated_lora.methods import Method
 from peft import LoraConfig, PeftModel, get_peft_model
 from transformers import (
 	AutoModelForImageClassification,
 	AutoModelForSequenceClassification,
 )
+
+from federated_lora.methods import Method
 
 
 def create_peft_model(
