@@ -4,7 +4,7 @@ sweep.py — drive DP federated-LoRA experiments across GPU nodes.
 
 Every experiment is its own subprocess (GPU memory freed between runs).
 
-Two modes:
+Three modes:
 
   compare  — homogeneous DP: every client shares one epsilon. One epsilon
              per node, 4 nodes total. Eps is encoded in --output-dir
@@ -20,14 +20,23 @@ Two modes:
              method (no --eps axis), so this needs just one node. Results
              -> results/sweep/dp_hetero/, logs -> logs/sweep/dp_hetero/.
 
+  rank     — homogeneous rank sweep: every client uses the same LoRA rank
+             (no client_ranks heterogeneity), epsilon held fixed at
+             RANK_SWEEP_EPS. One rank per node, 4 nodes total. Results
+             -> results/sweep/dp_rank/rank<r>/, logs -> logs/sweep/dp_rank/.
+
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 0.5; exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 1;   exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 3;   exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 8;   exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py hetero; exec bash'
+    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 2;  exec bash'
+    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 8;  exec bash'
+    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 16; exec bash'
+    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 32; exec bash'
 
 Pass --smoke for a correctness+timing check before committing a node to a
-full run, e.g. `sweep.py compare --eps 3 --smoke` or `sweep.py hetero
+full run, e.g. `sweep.py compare --eps 3 --smoke` or `sweep.py rank --rank 8
 --smoke`. --smoke shrinks both rounds AND local_steps (2 rounds x 2 local
 steps x 4 clients = 16 sequential steps per method, instead of the full
 run's 100 x 20 x 4 = 8000) so a real failure surfaces in seconds, not
@@ -57,8 +66,12 @@ SEED = 42
 # instead of shared, so the two sweeps are directly comparable.
 CLIENT_EPSILONS = [0.5, 1.0, 3.0, 8.0]
 
+# Epsilon held fixed for the rank sweep -- Config's own default, and the
+# middle value of the --eps grid used elsewhere.
+RANK_SWEEP_EPS = 3.0
+
 # Config defaults (lr_a=0.25, lr_b=0.25, lr_head=0.15) are used for every
-# method/epsilon cell -- no per-method LR search for this comparison.
+# method/epsilon/rank cell -- no per-method LR search for this comparison.
 LR_A = 0.25
 LR_B = 0.25
 LR_HEAD = 0.15
@@ -75,6 +88,7 @@ def run_experiment(
     log_path,
     epsilon=None,
     client_epsilons=None,
+    lora_rank=None,
     rounds=None,
     local_steps=None,
     timeout=None,
@@ -96,6 +110,8 @@ def run_experiment(
         cmd += ['--client-epsilons'] + [str(e) for e in client_epsilons]
     else:
         cmd += ['--epsilon', str(epsilon)]
+    if lora_rank is not None:
+        cmd += ['--lora-rank', str(lora_rank)]
     if rounds is not None:
         cmd += ['--rounds', str(rounds)]
     if local_steps is not None:
@@ -103,6 +119,8 @@ def run_experiment(
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     tag = f'eps={epsilon}' if client_epsilons is None else f'client_eps={client_epsilons}'
+    if lora_rank is not None:
+        tag += f' rank={lora_rank}'
     print(f'>>> {method:9} {tag} -> {log_path}', flush=True)
     with open(log_path, 'w') as log:
         try:
@@ -165,16 +183,42 @@ def hetero(smoke=False):
         )
 
 
+def rank(r, smoke=False):
+    """5 methods at fixed lora_rank=r, homogeneous (no client_ranks), eps=RANK_SWEEP_EPS -> results/sweep/dp_rank/rank<r>/."""
+    out = f'results/sweep/dp_rank/rank{r}/'
+    rounds = SMOKE_ROUNDS if smoke else None
+    local_steps = SMOKE_LOCAL_STEPS if smoke else None
+    timeout = SMOKE_TIMEOUT_S if smoke else None
+    for method in METHODS:
+        log = (
+            REPO
+            / 'logs'
+            / 'sweep'
+            / 'dp_rank'
+            / f'{method}_{BENCHMARK}_rank{r}_seed{SEED}.log'
+        )
+        run_experiment(
+            method, SEED, out, log, epsilon=RANK_SWEEP_EPS, lora_rank=r,
+            rounds=rounds, local_steps=local_steps, timeout=timeout,
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Drive DP federated-LoRA experiments.'
     )
-    parser.add_argument('mode', choices=['compare', 'hetero'])
+    parser.add_argument('mode', choices=['compare', 'hetero', 'rank'])
     parser.add_argument(
         '--eps',
         type=float,
         choices=[0.5, 1.0, 3.0, 8.0],
-        help='privacy budget for this node (required for "compare", unused for "hetero")',
+        help='privacy budget for this node (required for "compare", unused otherwise)',
+    )
+    parser.add_argument(
+        '--rank',
+        type=int,
+        choices=[2, 8, 16, 32],
+        help='LoRA rank for this node (required for "rank", unused otherwise)',
     )
     parser.add_argument(
         '--smoke',
@@ -191,6 +235,10 @@ def main():
         if args.eps is None:
             parser.error('--eps is required for mode "compare"')
         compare(args.eps, smoke=args.smoke)
+    elif args.mode == 'rank':
+        if args.rank is None:
+            parser.error('--rank is required for mode "rank"')
+        rank(args.rank, smoke=args.smoke)
     else:
         hetero(smoke=args.smoke)
 

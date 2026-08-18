@@ -171,4 +171,8 @@ pyrightconfig.json
 
 # refactor leftovers (mount blocks deletion; safe to remove)
 .trash/
+
+# sweep.py run logs -- generated per-node subprocess output, never intended
+# to be tracked (unlike results/*.json, which is an intentional archive)
+logs/
 .git/index.lock.stale

@@ -208,6 +208,7 @@ def run(args: list[str]) -> dict:
 		num_clients=args.num_clients,
 		global_rounds=args.rounds,
 		local_steps=args.local_steps,
+		lora_rank=args.lora_rank,
 		client_epsilons=tuple(args.client_epsilons)
 		if args.client_epsilons is not None
 		else None,
