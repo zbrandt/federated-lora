@@ -12,7 +12,14 @@ from federated_lora.data import partition_dirichlet, provide_dataloader
 
 
 def load_datasets(
-	dataset: str, num_clients: int, alpha: float, task: str, seed: int
+	dataset: str,
+	num_clients: int,
+	alpha: float,
+	task: str,
+	seed: int,
+	label_field: str,
+	image_field: str,
+	eval_split: str,
 ) -> Path:
 	output_dir = Path('data') / f'{task}_{num_clients}_clients_alpha_{alpha}'
 	if output_dir.is_dir():
@@ -21,13 +28,17 @@ def load_datasets(
 
 	dataset = load_dataset(dataset)
 
-	train, test = dataset['train'], dataset['test']
+	train, test = dataset['train'], dataset[eval_split]
 
-	X_train = np.stack([np.array(im) for im in train['img']]).astype(np.uint8)
-	y_train = np.array(train['fine_label'], dtype=np.int64)
+	X_train = np.stack(
+		[np.array(im.convert('RGB')) for im in train[image_field]]
+	).astype(np.uint8)
+	y_train = np.array(train[label_field], dtype=np.int64)
 
-	X_test = np.stack([np.array(im) for im in test['img']]).astype(np.uint8)
-	y_test = np.array(test['fine_label'], dtype=np.int64)
+	X_test = np.stack(
+		[np.array(im.convert('RGB')) for im in test[image_field]]
+	).astype(np.uint8)
+	y_test = np.array(test[label_field], dtype=np.int64)
 
 	partitions = partition_dirichlet(
 		labels=y_train.tolist(),

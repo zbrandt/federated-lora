@@ -24,6 +24,17 @@ TASKS: dict[str, dict] = {
 		'model': 'FacebookAI/roberta-base',
 		'target_modules': ('query', 'value'),
 	},
+	'tiny_imagenet': {
+		'experiment': 'vision',
+		'dataset': 'zh-plus/tiny-imagenet',
+		'eval_split': 'valid',
+		'label_field': 'label',
+		'image_field': 'image',
+		'text_fields': (),
+		'num_labels': 200,
+		'model': 'microsoft/swin-tiny-patch4-window7-224',
+		'target_modules': ('query', 'value'),
+	},
 }
 
 
@@ -45,6 +56,7 @@ class Config:
 	dataset: str = 'uoft-cs/cifar100'
 	eval_split: str = 'test'  # split used for evaluation
 	label_field: str = 'fine_label'  # label column in the raw dataset
+	image_field: str = 'img'
 	text_fields: tuple[str, ...] = ()  # input text column(s) for text tasks
 	num_labels: int = 100  # number of labels to use in the last layer added to the model, typically for a classification task
 	model: str = 'microsoft/swin-tiny-patch4-window7-224'

@@ -78,6 +78,7 @@ def provide_dataloader(dataset, batch_size, collate, pin_memory) -> DataLoader:
 	)
 
 
+# TODO: add parameter descriptions
 def load_datasets(
 	dataset: str,
 	num_clients: int,
@@ -85,6 +86,9 @@ def load_datasets(
 	task: str,
 	experiment: str,
 	seed: int,
+	label_field: str,
+	image_field: str,
+	eval_split: str,
 ) -> Path:
 	"""
 	Load the dataset and save train shards and test split.
@@ -107,8 +111,16 @@ def load_datasets(
 	"""
 	if experiment == 'text':
 		from federated_lora.data.prepare_glue import load_datasets
-	else:
-		from federated_lora.data.prepare_cifar100 import load_datasets
+
+		return load_datasets(
+			dataset=dataset,
+			num_clients=num_clients,
+			alpha=alpha,
+			task=task,
+			seed=seed,
+		)
+
+	from federated_lora.data.prepare_vision import load_datasets
 
 	return load_datasets(
 		dataset=dataset,
@@ -116,6 +128,9 @@ def load_datasets(
 		alpha=alpha,
 		task=task,
 		seed=seed,
+		label_field=label_field,
+		image_field=image_field,
+		eval_split=eval_split,
 	)
 
 
@@ -163,7 +178,7 @@ def prepare_dataloaders(
 	if experiment == 'text':
 		from federated_lora.data.prepare_glue import prepare_dataloaders
 	else:
-		from federated_lora.data.prepare_cifar100 import prepare_dataloaders
+		from federated_lora.data.prepare_vision import prepare_dataloaders
 
 	return prepare_dataloaders(
 		model=model,

@@ -75,6 +75,9 @@ def build(config: Config) -> Server:
 		task=config.task,
 		experiment=config.experiment,
 		seed=config.seed,
+		label_field=config.label_field,
+		image_field=config.image_field,
+		eval_split=config.eval_split,
 	)
 
 	train_dataloaders, test_dataloader = prepare_dataloaders(
