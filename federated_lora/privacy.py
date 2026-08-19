@@ -106,9 +106,14 @@ def privatize(
 
 	params = list(named.values())
 	norm_mean, norm_median = pre_clip_norm_stats(params)
-	thresholds = clip_and_accumulate(params, strategy, optimizer.max_grad_norm)
+	thresholds = clip_and_accumulate(
+		params=params, 
+		strategy=strategy, 
+		max_grad_norm=optimizer.max_grad_norm,
+		names={p: n for n, p in named.items()}
+	)
 	add_noise(thresholds, optimizer.noise_multiplier)
-	scale_grad(params, optimizer.expected_batch_size)
+	scale_grad(params, optimizer.expected_batch_size, thresholds)
 
 	optimizer.last_diagnostics = {
 		'strategy': strategy,
@@ -156,12 +161,6 @@ def dewindow_grad_sample(
 	if n == batch_size:
 		return grad_sample
 
-	# if batch_size == 0 or n % batch_size != 0:
-	# 	raise ValueError(
-	# 		f'grad_sample leading dim {n} is not a multiple of the realized '
-	# 		f'batch size {batch_size}; cannot infer a window count.'
-	# 	)
-
 	num_windows = n // batch_size
 	reshaped = grad_sample.reshape(
 		batch_size, num_windows, *grad_sample.shape[1:]
@@ -169,10 +168,12 @@ def dewindow_grad_sample(
 	return reshaped.sum(dim=1)
 
 
+# TODO: clean branching logic
 def clip_and_accumulate(
 	params: list[nn.Parameter],
-	strategy: str = 'median',
-	max_grad_norm: float = 1.0,
+	strategy: str,
+	max_grad_norm: float,
+	names: dict[nn.Parameter, str]
 ) -> dict[nn.Parameter, float]:
 	"""
 	Clip per-example gradients and sum them into ``p.summed_grad``.
@@ -203,6 +204,11 @@ def clip_and_accumulate(
 	"""
 	thresholds: dict[nn.Parameter, float] = {}
 
+	if strategy == "none":
+		for p in params:
+			p.summed_grad = p.grad_sample.sum(dim=0)
+			thresholds[p] = float('inf')
+
 	if strategy == 'flat':
 		per_example_norms = torch.stack(
 			[
@@ -220,32 +226,35 @@ def clip_and_accumulate(
 			thresholds[p] = float(max_grad_norm)
 		return thresholds
 
-	for p in params:
-		grad_sample = p.grad_sample
 
-		if strategy == 'none':
-			p.summed_grad = grad_sample.sum(dim=0)
-			thresholds[p] = float('inf')
-			continue
+	if strategy == "median":
+		def group_key(name: str) -> str:
+			return name.replace('.lora_A', '').replace('.lora_B', '')
 
-		# get per-example gradient norms
-		norms = grad_sample.reshape(len(grad_sample), -1).norm(2, dim=-1)
+		layers: dict[str, list[nn.Parameter]] = {}
+		for p in params:
+			key = group_key(names[p])
+			layers.setdefault(key, []).append(p)
 
-		# set clipping threshold to median of gradient norm distribution
-		c = norms.median().clamp(min=1e-6)
+		for key, layer in layers.items():
+			per_example_norms = torch.stack(
+				[
+					p.grad_sample.reshape(len(p.grad_sample), -1).norm(2, dim=-1) 
+					for p in layer
+				],
+				dim=0,
+			).norm(2, dim=0)
 
-		# scale down norms greater than the threshold, leave the rest alone
-		factor = (c / (norms + 1e-6)).clamp(max=1.0)
+			c = per_example_norms.median().clamp(min=1e-6)
+			factor = (c / (per_example_norms + 1e-6)).clamp(max=1.0)
 
-		# apply factors and sum over the batch in one shot
-		p.summed_grad = torch.einsum(
-			'i,i...->...', factor.to(grad_sample.dtype), grad_sample
-		)
-
-		thresholds[p] = float(c)
+			for p in layer:
+				p.summed_grad = torch.einsum(
+					'i,i...->...', factor.to(p.grad_sample.dtype), p.grad_sample
+				)
+				thresholds[p] = float(c)
 
 	return thresholds
-
 
 def add_noise(
 	thresholds: dict[nn.Parameter, float],
@@ -276,6 +285,7 @@ def add_noise(
 def scale_grad(
 	params: list[nn.Parameter],
 	expected_batch_size: int,
+	thresholds: dict[nn.Parameter, float] # TODO
 	# accumulated_iterations: int,
 ) -> None:
 	"""
@@ -289,7 +299,12 @@ def scale_grad(
 		The batch_size used for averaging gradients.
 	"""
 	for p in params:
-		p.grad = p.summed_grad / expected_batch_size
+		grad = p.summed_grad / expected_batch_size
+		if True:
+			c = thresholds[p]
+			if c not in (0.0, float('inf')):
+				grad = grad / c
+		p.grad = grad
 
 
 def zero_grad(params: list[torch.Tensor]) -> None:
