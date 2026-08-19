@@ -141,6 +141,7 @@ def run_experiment(
     rounds=None,
     local_steps=None,
     timeout=None,
+    log_uploads_dir=None,
 ):
     """Launch one experiment.py run in its own process; stream output to log_path."""
     cmd = [
@@ -167,6 +168,8 @@ def run_experiment(
         cmd += ['--rounds', str(rounds)]
     if local_steps is not None:
         cmd += ['--local-steps', str(local_steps)]
+    if log_uploads_dir is not None:
+        cmd += ['--log-uploads-dir', log_uploads_dir]
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     tag = f'eps={epsilon}' if client_epsilons is None else f'client_eps={client_epsilons}'
@@ -306,7 +309,7 @@ def make_spread(num_clients, mean, spread, floor, round_int=False):
     return values
 
 
-def spread_grid(gamma, kappa, smoke=False):
+def spread_grid(gamma, kappa, smoke=False, log_uploads=False):
     """GRID_METHODS at fixed (gamma, kappa) spread levels around MEAN_EPS/MEAN_RANK -> results/sweep/dp_spread_grid/gamma<g>_kappa<k>/."""
     client_epsilons = make_spread(NUM_CLIENTS, MEAN_EPS, gamma, EPS_FLOOR)
     client_ranks = make_spread(NUM_CLIENTS, MEAN_RANK, kappa, RANK_FLOOR, round_int=True)
@@ -323,10 +326,19 @@ def spread_grid(gamma, kappa, smoke=False):
             / 'dp_spread_grid'
             / f'{method}_{BENCHMARK}_gamma{gamma}_kappa{kappa}_seed{SEED}.log'
         )
+        # per-method dir: rblora/flora's real ragged-shape uploads and
+        # hetlora's same-shape-masked uploads must never land in the same
+        # directory -- analyze_aggregation_error.py assumes every round*.pt
+        # in a directory came from one method's own upload format.
+        uploads_dir = (
+            f'logs/uploads/dp_spread_grid/gamma{gamma}_kappa{kappa}/{method}/'
+            if log_uploads else None
+        )
         run_experiment(
             method, SEED, out, log,
             client_epsilons=client_epsilons, client_ranks=client_ranks,
             rounds=rounds, local_steps=local_steps, timeout=timeout,
+            log_uploads_dir=uploads_dir,
         )
 
 
@@ -340,11 +352,11 @@ def print_spread_grid_commands():
             )
 
 
-def spread_grid_all(smoke=False):
+def spread_grid_all(smoke=False, log_uploads=False):
     """All 16 (gamma, kappa) cells sequentially on one node -- 16 cells x 4 methods x 100 rounds, one after another."""
     for gamma in SPREAD_LEVELS:
         for kappa in SPREAD_LEVELS:
-            spread_grid(gamma, kappa, smoke=smoke)
+            spread_grid(gamma, kappa, smoke=smoke, log_uploads=log_uploads)
 
 
 def main():
@@ -395,6 +407,17 @@ def main():
             'node to the full run'
         ),
     )
+    parser.add_argument(
+        '--log-uploads',
+        action='store_true',
+        help=(
+            '"spread-grid" mode only: save each round\'s raw per-client '
+            '(lora_A, lora_B) uploads to logs/uploads/dp_spread_grid/... for '
+            'offline aggregation-error analysis (analyze_aggregation_error.py). '
+            'Off by default since it costs extra disk and only spread-grid has '
+            'real rank heterogeneity for it to be meaningful on.'
+        ),
+    )
     args = parser.parse_args()
 
     if args.mode == 'grid' and args.list:
@@ -421,11 +444,11 @@ def main():
             grid(args.eps, args.rank, smoke=args.smoke)
     elif args.mode == 'spread-grid':
         if args.all:
-            spread_grid_all(smoke=args.smoke)
+            spread_grid_all(smoke=args.smoke, log_uploads=args.log_uploads)
         elif args.gamma is None or args.kappa is None:
             parser.error('--gamma and --kappa are both required for mode "spread-grid" (or pass --all to run every cell on this node, or --list to print all commands)')
         else:
-            spread_grid(args.gamma, args.kappa, smoke=args.smoke)
+            spread_grid(args.gamma, args.kappa, smoke=args.smoke, log_uploads=args.log_uploads)
     else:
         hetero(smoke=args.smoke)
 
