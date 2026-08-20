@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Callable
 
+from federated_lora.config import Config
+from federated_lora.rank_rule import recommended_rank
+
 CouplingFn = Callable[..., int]
 
 
@@ -59,6 +62,23 @@ def threshold_coupling(
         if epsilon < threshold:
             return rank
     return ranks[-1]
+
+
+def rank_rule_coupling(
+    epsilon: float,
+    candidate_ranks: tuple[int, ...],
+    config: Config,
+    size: float,
+) -> int:
+    """
+    Rank chosen to maximize the fitted rank_rule model's predicted accuracy
+    at this epsilon (see federated_lora/rank_rule.py -- ACC_NODP_BY_RANK and
+    KAPPA fit from real rank_sweep/grid_sweep data), instead of an arbitrary
+    monotone heuristic like linear_coupling/threshold_coupling. Since it's
+    derived from measured accuracy rather than an assumed shape, it isn't
+    guaranteed to agree with those two away from where they already agree.
+    """
+    return recommended_rank(config, epsilon, size, candidate_ranks=candidate_ranks)
 
 
 def client_ranks_from_epsilons(

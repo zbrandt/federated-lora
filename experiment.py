@@ -14,11 +14,24 @@ from torch.optim import SGD
 
 from federated_lora.client import Client
 from federated_lora.config import Config
+from federated_lora.coupling import (
+	client_ranks_from_epsilons,
+	linear_coupling,
+	rank_rule_coupling,
+	threshold_coupling,
+)
 from federated_lora.data import load_datasets, prepare_dataloaders
 from federated_lora.methods import get_method
 from federated_lora.model import create_peft_model, group_trainable_parameters
 from federated_lora.privacy import compute_noise_level
+from federated_lora.rank_rule import shard_size
 from federated_lora.server import Server
+
+COUPLING_FNS = {
+	'linear': linear_coupling,
+	'threshold': threshold_coupling,
+	'rank_rule': rank_rule_coupling,
+}
 
 
 def parse_args():
@@ -56,6 +69,20 @@ def parse_args():
 		type=str,
 		default=None,
 		help='if set, save each round raw per-client (lora_A, lora_B, ...) uploads before aggregation to this directory, for offline aggregation-error analysis',
+	)
+	parser.add_argument(
+		'--coupling-fn',
+		type=str,
+		choices=sorted(COUPLING_FNS),
+		default=None,
+		help='derive each client\'s LoRA rank from --client-epsilons via this rank<->DP coupling function (requires --client-epsilons; mutually exclusive with --client-ranks)',
+	)
+	parser.add_argument(
+		'--candidate-ranks',
+		type=int,
+		nargs='+',
+		default=[2, 8, 16, 32],
+		help='candidate rank set --coupling-fn snaps to (only used with --coupling-fn)',
 	)
 
 	return parser.parse_args()
@@ -226,11 +253,29 @@ def run(args: list[str]) -> dict:
 		client_epsilons=tuple(args.client_epsilons)
 		if args.client_epsilons is not None
 		else None,
-		client_ranks=tuple(args.client_ranks)
-		if args.client_ranks is not None
-		else None,
+		client_ranks=None,
 		log_uploads_dir=args.log_uploads_dir,
 	)
+
+	client_ranks = args.client_ranks
+	if args.coupling_fn is not None:
+		if args.client_ranks is not None:
+			raise ValueError('--coupling-fn and --client-ranks are mutually exclusive')
+		if args.client_epsilons is None:
+			raise ValueError('--coupling-fn requires --client-epsilons')
+		coupling_kwargs = (
+			{'config': config, 'size': shard_size(config)}
+			if args.coupling_fn == 'rank_rule'
+			else {}
+		)
+		client_ranks = client_ranks_from_epsilons(
+			args.client_epsilons,
+			COUPLING_FNS[args.coupling_fn],
+			tuple(args.candidate_ranks),
+			**coupling_kwargs,
+		)
+	config.client_ranks = tuple(client_ranks) if client_ranks is not None else None
+
 	server = build(config)
 	history = server.run()
 	result = {'config': asdict(config), 'history': history}

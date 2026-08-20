@@ -12,8 +12,8 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ffalora.config import Config
-from ffalora.rank_rule import ACC_NODP_BY_RANK, GLUE_TRAIN_SIZES, kappa, noise_multiplier
+from federated_lora.config import Config
+from federated_lora.rank_rule import ACC_NODP_BY_RANK, KAPPA, noise_multiplier, shard_size
 from rankrule.validate_rank_rule import load_grid
 
 OUTPUT_PATH = Path("figures/sweep/rank_rule_model.png")
@@ -36,15 +36,15 @@ def main() -> None:
     parser.add_argument("--output", default=str(OUTPUT_PATH))
     args = parser.parse_args()
 
-    config = Config()
-    shard_size = GLUE_TRAIN_SIZES[config.dataset_task] / config.num_clients
+    config = Config(task='cifar100', method='rblora')
+    size = shard_size(config)
     ranks = [r for r in args.ranks if r in ACC_NODP_BY_RANK]
 
     eps_grid = np.geomspace(args.eps_min, args.eps_max, 40)
-    sigma_grid = np.array([noise_multiplier(config, float(eps), shard_size) for eps in eps_grid])
-    k = kappa(config, shard_size)
+    sigma_grid = np.array([noise_multiplier(config, float(eps), size) for eps in eps_grid])
+    k = KAPPA
 
-    print(f"kappa = {k:.6f} (anchor: rank 8, eps 1.0)")
+    print(f"kappa = {k:.6f}")
     print(f"{'rank':>5} | {'acc_nodp':>8}")
     for r in ranks:
         print(f"{r:>5} | {ACC_NODP_BY_RANK[r]:>8.4f}")

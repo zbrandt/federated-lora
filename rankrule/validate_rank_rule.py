@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ffalora.config import Config
-from ffalora.rank_rule import GLUE_TRAIN_SIZES, recommended_rank
+from federated_lora.config import Config
+from federated_lora.rank_rule import recommended_rank, shard_size
 
 # Computes the final accuracy of a run by averaging the last `tail` rounds of its accuracy history.
 def _final_accuracy(result: dict, tail: int) -> float:
@@ -45,8 +45,8 @@ def main() -> None:
     args = parser.parse_args()
 
     by_eps_rank = load_grid(Path(args.results_dir), args.tail)
-    config = Config()
-    shard_size = GLUE_TRAIN_SIZES[config.dataset_task] / config.num_clients
+    config = Config(task='cifar100', method='rblora')
+    size = shard_size(config)
 
     print(f"{'epsilon':>8} | {'measured best':>13} | {'rule pick':>9} | ranks measured -> mean accuracy")
     hits = 0
@@ -64,7 +64,7 @@ def main() -> None:
         measured_best = max(rank_means, key=rank_means.get)
         candidate_ranks = tuple(sorted(rank_means))
         try:
-            predicted = recommended_rank(config, eps, shard_size, candidate_ranks=candidate_ranks)
+            predicted = recommended_rank(config, eps, size, candidate_ranks=candidate_ranks)
         except ValueError as error:
             print(f"{eps!s:>8} | measured best={measured_best} | rule can't predict: {error}")
             continue
