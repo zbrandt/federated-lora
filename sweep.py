@@ -49,6 +49,14 @@ Three modes:
              Results -> results/sweep/dp_spread_grid/gamma<g>_kappa<k>/,
              logs -> logs/sweep/dp_spread_grid/.
 
+  coupling — GRID_METHODS at CLIENT_EPSILONS (same heterogeneous eps
+             assignment as hetero), but instead of every client sharing one
+             rank, each client's rank is derived from its own epsilon via a
+             rank<->DP coupling function (linear/threshold/rank_rule --
+             federated_lora/coupling.py). One coupling function per node, 3
+             nodes total. Results -> results/sweep/dp_coupling/<fn>/, logs ->
+             logs/sweep/dp_coupling/.
+
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 0.5; exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 1;   exec bash'
     tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 3;   exec bash'
@@ -66,6 +74,10 @@ Three modes:
     # spread-grid: one node per (gamma, kappa) pair, 16 total. Run
     #   python sweep.py spread-grid --list
     # to print all 16 ready-to-paste tmux commands instead of typing them out.
+
+    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py coupling --coupling-fn linear; exec bash'
+    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py coupling --coupling-fn threshold; exec bash'
+    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py coupling --coupling-fn rank_rule; exec bash'
 
 Pass --smoke for a correctness+timing check before committing a node to a
 full run, e.g. `sweep.py compare --eps 3 --smoke` or `sweep.py rank --rank 8
@@ -94,6 +106,7 @@ METHODS = ['rblora', 'hetlora', 'flora', 'flexlora', 'ffa_lora']
 # Server.fedavg(), same behavior at every rank), so it's not informative on
 # the rank axis and would just be 16 extra no-signal runs.
 GRID_METHODS = ['rblora', 'hetlora', 'flora', 'flexlora']
+COUPLING_STRATEGIES = ['linear', 'threshold', 'rank_rule']
 EPS_VALUES = [0.5, 1.0, 3.0, 8.0]
 RANK_VALUES = [2, 8, 16, 32]
 NUM_CLIENTS = 4
@@ -142,6 +155,7 @@ def run_experiment(
     local_steps=None,
     timeout=None,
     log_uploads_dir=None,
+    coupling_fn=None,
 ):
     """Launch one experiment.py run in its own process; stream output to log_path."""
     cmd = [
@@ -160,7 +174,9 @@ def run_experiment(
         cmd += ['--client-epsilons'] + [str(e) for e in client_epsilons]
     else:
         cmd += ['--epsilon', str(epsilon)]
-    if client_ranks is not None:
+    if coupling_fn is not None:
+        cmd += ['--coupling-fn', coupling_fn]
+    elif client_ranks is not None:
         cmd += ['--client-ranks'] + [str(r) for r in client_ranks]
     elif lora_rank is not None:
         cmd += ['--lora-rank', str(lora_rank)]
@@ -173,7 +189,9 @@ def run_experiment(
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     tag = f'eps={epsilon}' if client_epsilons is None else f'client_eps={client_epsilons}'
-    if client_ranks is not None:
+    if coupling_fn is not None:
+        tag += f' coupling_fn={coupling_fn}'
+    elif client_ranks is not None:
         tag += f' client_ranks={client_ranks}'
     elif lora_rank is not None:
         tag += f' rank={lora_rank}'
@@ -237,6 +255,42 @@ def hetero(smoke=False):
             method, SEED, out, log, client_epsilons=CLIENT_EPSILONS,
             rounds=rounds, local_steps=local_steps, timeout=timeout,
         )
+
+
+def coupling(coupling_fn, smoke=False):
+    """GRID_METHODS, client_epsilons=CLIENT_EPSILONS, per-client rank derived via coupling_fn -> results/sweep/dp_coupling/<fn>/."""
+    out = f'results/sweep/dp_coupling/{coupling_fn}/'
+    rounds = SMOKE_ROUNDS if smoke else None
+    local_steps = SMOKE_LOCAL_STEPS if smoke else None
+    timeout = SMOKE_TIMEOUT_S if smoke else None
+    for method in GRID_METHODS:
+        log = (
+            REPO
+            / 'logs'
+            / 'sweep'
+            / 'dp_coupling'
+            / f'{method}_{BENCHMARK}_{coupling_fn}_seed{SEED}.log'
+        )
+        run_experiment(
+            method, SEED, out, log, client_epsilons=CLIENT_EPSILONS,
+            coupling_fn=coupling_fn,
+            rounds=rounds, local_steps=local_steps, timeout=timeout,
+        )
+
+
+def print_coupling_commands():
+    """Print all 3 ready-to-paste tmux launch lines for the coupling-strategy comparison."""
+    for fn in COUPLING_STRATEGIES:
+        print(
+            "tmux new-session -d -s run -c ~/federated-lora "
+            f"'.venv/bin/python sweep.py coupling --coupling-fn {fn}; exec bash'"
+        )
+
+
+def coupling_all(smoke=False):
+    """All 3 coupling strategies sequentially on one node."""
+    for fn in COUPLING_STRATEGIES:
+        coupling(fn, smoke=smoke)
 
 
 def rank(r, smoke=False):
@@ -363,7 +417,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Drive DP federated-LoRA experiments.'
     )
-    parser.add_argument('mode', choices=['compare', 'hetero', 'rank', 'grid', 'spread-grid'])
+    parser.add_argument('mode', choices=['compare', 'hetero', 'rank', 'grid', 'spread-grid', 'coupling'])
     parser.add_argument(
         '--eps',
         type=float,
@@ -389,14 +443,20 @@ def main():
         help='rank spread level for this node, 0..1 (required for "spread-grid", unused otherwise)',
     )
     parser.add_argument(
+        '--coupling-fn',
+        type=str,
+        choices=COUPLING_STRATEGIES,
+        help='rank<->DP coupling function for this node (required for "coupling", unused otherwise)',
+    )
+    parser.add_argument(
         '--list',
         action='store_true',
-        help='"grid"/"spread-grid" modes only: print all 16 ready-to-paste tmux launch commands and exit, without running anything',
+        help='"grid"/"spread-grid"/"coupling" modes only: print all ready-to-paste tmux launch commands and exit, without running anything',
     )
     parser.add_argument(
         '--all',
         action='store_true',
-        help='"grid"/"spread-grid" modes only: run all 16 cells sequentially on this one node instead of just one',
+        help='"grid"/"spread-grid"/"coupling" modes only: run every cell sequentially on this one node instead of just one',
     )
     parser.add_argument(
         '--smoke',
@@ -426,6 +486,9 @@ def main():
     if args.mode == 'spread-grid' and args.list:
         print_spread_grid_commands()
         return
+    if args.mode == 'coupling' and args.list:
+        print_coupling_commands()
+        return
 
     if args.mode == 'compare':
         if args.eps is None:
@@ -449,6 +512,13 @@ def main():
             parser.error('--gamma and --kappa are both required for mode "spread-grid" (or pass --all to run every cell on this node, or --list to print all commands)')
         else:
             spread_grid(args.gamma, args.kappa, smoke=args.smoke, log_uploads=args.log_uploads)
+    elif args.mode == 'coupling':
+        if args.all:
+            coupling_all(smoke=args.smoke)
+        elif args.coupling_fn is None:
+            parser.error('--coupling-fn is required for mode "coupling" (or pass --all to run every strategy on this node, or --list to print all commands)')
+        else:
+            coupling(args.coupling_fn, smoke=args.smoke)
     else:
         hetero(smoke=args.smoke)
 
