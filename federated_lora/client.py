@@ -9,7 +9,6 @@ from transformers import PreTrainedModel
 
 from federated_lora.data import cycle
 from federated_lora.method import Method
-from federated_lora.metrics import summarize_diagnostics
 from federated_lora.model import get_trainable_state
 
 
@@ -63,7 +62,6 @@ class Client:
 		batches = cycle(self.dataloader)
 
 		total_loss = 0.0
-		step_diags = []
 		for step in range(self.steps):
 			batch = next(batches)
 			batch = {
@@ -84,13 +82,6 @@ class Client:
 				batch_size=batch_size,
 			)
 
-			# privatize() stashes this step's clipping/grad-norm diagnostics on
-			# the optimizer; collect it (empty Poisson lots leave it None).
-			diag = getattr(self.optimizer, 'last_diagnostics', None)
-			if diag is not None:
-				step_diags.append(diag)
-				self.optimizer.last_diagnostics = None
-
 			self.optimizer.zero_grad(set_to_none=True)
 
 			total_loss += float(loss.item())
@@ -102,5 +93,4 @@ class Client:
 		return (
 			upload,
 			total_loss / self.steps,
-			summarize_diagnostics(step_diags),
 		)

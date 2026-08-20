@@ -10,7 +10,6 @@ from transformers import PreTrainedModel
 from federated_lora.client import Client
 from federated_lora.eval import evaluate
 from federated_lora.method import Method
-from federated_lora.metrics import aggregate_diags
 from federated_lora.model import get_trainable_state, load_trainable_state
 
 
@@ -78,20 +77,17 @@ class Server:
 			selected = [self.clients[i] for i in indices]
 
 			t0 = time.perf_counter()
-			uploads, losses, diags = [], [], []
+			uploads, losses = [], []
 			for client in selected:
 				# broadcast model weights
 				global_state = get_trainable_state(self.model)
 				load_trainable_state(client.model, global_state)
 
 				# compute local client uploads
-				upload, loss, diag = client.local_update(
-					round=r, method=self.method
-				)
+				upload, loss = client.local_update(round=r, method=self.method)
 
 				uploads.append(upload)
 				losses.append(loss)
-				diags.append(diag)
 
 			noise_multiplier = float(
 				getattr(selected[0].optimizer, 'noise_multiplier', 0.0)
@@ -138,7 +134,6 @@ class Server:
 				'lr_B': lr_B,
 				'lr_head': lr_head,
 				'noise_multiplier': noise_multiplier,
-				**aggregate_diags(diags),
 			}
 
 			history.append(metrics)

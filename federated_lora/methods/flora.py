@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
+from federated_lora.model import dewindow_grad_samples
 from federated_lora.privacy import privatize, zero_grad
 from federated_lora.server import Server
 
@@ -26,9 +27,9 @@ class FLoRA:
 		step: int,
 		batch_size: int,
 	) -> None:
-		params = privatize(model, optimizer, batch_size)
-		if params is None:
-			return
+		dewindow_grad_samples(model, batch_size)
+
+		params = privatize(model, optimizer)
 
 		optimizer.original_optimizer.step()
 

@@ -6,8 +6,6 @@ from opacus import GradSampleModule
 from opacus.accountants.utils import get_noise_multiplier
 from opacus.optimizers import DPOptimizer
 
-from federated_lora.metrics import pre_clip_norm_stats
-
 
 def compute_noise_level(
 	num_examples: int,
@@ -63,123 +61,49 @@ def compute_noise_level(
 def privatize(
 	model: GradSampleModule,
 	optimizer: DPOptimizer,
-	batch_size: int,
-) -> list[nn.Parameter] | None:
+) -> list[nn.Parameter]:
 	"""
-	Clip per sample gradients and add Gaussian noise.
-
-	Aggregate ``p.grad_sample`` over all parameters to calculate per sample
-	norms. Clip ``p.grad_sample`` according to the optimizer's clipping strategy
-	(``'median'``, ``'flat'``, or ``'none'``). Aggregate clipped per sample
-	gradients into ``p.summed_grad``. Add Gaussian noise to ``p.summed_grad``
-	calibrated to the noise multiplier and the clipping threshold. Divide
-	gradients by ``expected_batch_size`` into ``p.grad``.
+	Privatize model training parameters.
 
 	Parameters
 	----------
 	model : GradSampleModule
-		The wrapped model carrying per-example gradients.
+		Wrapped model to compute per-sample gradients.
 	optimizer : DPOptimizer
-		The wrapped optimizer carrying the noise multiplier and expected batch
-		size.
-	batch_size : int
-		The number of training examples processed before parameters are updated.
-
+		Wrapped optimizer to clip per-sample gradients and add Gaussian noise.
 
 	Returns
 	-------
 	list[nn.Parameter] | None
-		A list of the privatized parameters or ``None`` for an empty batch.
+		A list of privatized model training parameters.
 	"""
-	named = {}
-	for n, p in model.named_parameters():
+	params = []
+	for _, p in model.named_parameters():
 		if p.requires_grad and getattr(p, 'grad_sample', None) is not None:
-			p.grad_sample = dewindow_grad_sample(p.grad_sample, batch_size)
-			named[n] = p
+			params.append(p)
 
-	if not named:
-		optimizer.last_diagnostics = None
-		optimizer.zero_grad()
-		return
-
-	strategy = getattr(optimizer, 'clipping_strategy', 'median')
-
-	params = list(named.values())
-	norm_mean, norm_median = pre_clip_norm_stats(params)
-	thresholds = clip_and_accumulate(
-		params=params, 
-		strategy=strategy, 
+	sensitivity = clip_and_accumulate(
+		params=params,
+		clipping_strategy=optimizer.clipping_strategy,
 		max_grad_norm=optimizer.max_grad_norm,
-		names={p: n for n, p in named.items()}
 	)
-	add_noise(thresholds, optimizer.noise_multiplier)
-	scale_grad(params, optimizer.expected_batch_size, thresholds)
+	print(sensitivity)
 
-	optimizer.last_diagnostics = {
-		'strategy': strategy,
-		'grad_norm_mean': norm_mean,
-		'grad_norm_median': norm_median,
-		'clip_thresholds': {n: thresholds[p] for n, p in named.items()},
-	}
+	add_noise(params, optimizer.noise_multiplier, sensitivity)
+	scale_grad(params, optimizer.expected_batch_size)
 
 	return params
 
 
-def dewindow_grad_sample(
-	grad_sample: torch.Tensor, batch_size: int
-) -> torch.Tensor:
-	"""
-	Collapse a ``grad_sample`` with a windowed leading dimension back to one row
-	per example.
-
-	Windowed attention folds windows into the batch dimension before transformer
-	blocks, so Opacus sees shape (``batch_size`` * ``num_windows``, ``tokens``,
-	``C``) instead of (``batch_size``, ``tokens``, ``C``) for those layers.
-
-	Hugging Face's Swin transformer's ``window_partition`` is batch-major, so
-	each ``num_windows``-sized run of rows belongs to one example. Summing it
-	recovers the true per-example gradient, the same way Opacus already sums
-	over the token axis within one window via ``einsum`` contraction.
-
-	A ``grad_sample`` with leading dimension already equal to batch_size passes
-	through unchanged.
-
-	Parameters
-	----------
-	grad_sample : torch.Tensor
-		The per-example gradients computed for a parameter during the backward
-		pass.
-	batch_size : int
-		The number of training examples processed before parameters are updated.
-
-	Returns
-	-------
-	torch.Tensor
-		A recovered gradient sample from summing over the windows dimension.
-	"""
-	n = grad_sample.shape[0]
-	if n == batch_size:
-		return grad_sample
-
-	num_windows = n // batch_size
-	reshaped = grad_sample.reshape(
-		batch_size, num_windows, *grad_sample.shape[1:]
-	)
-	return reshaped.sum(dim=1)
-
-
-# TODO: clean branching logic
 def clip_and_accumulate(
 	params: list[nn.Parameter],
-	strategy: str,
+	clipping_strategy: str,
 	max_grad_norm: float,
-	names: dict[nn.Parameter, str]
-) -> dict[nn.Parameter, float]:
+) -> float:
 	"""
-	Clip per-example gradients and sum them into ``p.summed_grad``.
+	Clip and accumulate per-example gradients.
 
 	Three clipping strategies are supported:
-
 	- ``'median'``: each layer is clipped independently to the median of its own
 		per-example gradient-norm distribution.
 	- ``'flat'``: the global per-example gradient norm (across all layers) is
@@ -191,25 +115,22 @@ def clip_and_accumulate(
 	params : list[nn.Parameter]
 		The list of parameters with per-example gradients.
 	strategy : str
-		The clipping strategy (``'median'``, ``'flat'``, or ``'none'``).
-		Defaults to ``'median'``.
+		The clipping strategy (``'median'``, ``'flat'``, or ``'none'``),
+		defaults to ``'median'``.
 	max_grad_norm : float
 		The global clipping bound used by the ``'flat'`` strategy.
 
 	Returns
 	-------
-	dict[nn.Parameter, float]
-		A dictionary mapping each parameter to the clipping threshold applied
-		to it. ``add_noise`` uses these to calibrate the per-layer noise scale.
+	float
+		TODO
 	"""
-	thresholds: dict[nn.Parameter, float] = {}
-
-	if strategy == "none":
+	if clipping_strategy == 'none':
 		for p in params:
 			p.summed_grad = p.grad_sample.sum(dim=0)
-			thresholds[p] = float('inf')
+		return 0.0
 
-	if strategy == 'flat':
+	if clipping_strategy == 'flat':
 		per_example_norms = torch.stack(
 			[
 				p.grad_sample.reshape(len(p.grad_sample), -1).norm(2, dim=-1)
@@ -217,66 +138,57 @@ def clip_and_accumulate(
 			],
 			dim=0,
 		).norm(2, dim=0)
+
 		factor = (max_grad_norm / (per_example_norms + 1e-6)).clamp(max=1.0)
+
 		for p in params:
 			grad_sample = p.grad_sample
 			p.summed_grad = torch.einsum(
 				'i,i...->...', factor.to(grad_sample.dtype), grad_sample
 			)
-			thresholds[p] = float(max_grad_norm)
-		return thresholds
 
+		return float(max_grad_norm)
 
-	if strategy == "median":
-		def group_key(name: str) -> str:
-			return name.replace('.lora_A', '').replace('.lora_B', '')
-
-		layers: dict[str, list[nn.Parameter]] = {}
+	if clipping_strategy == 'median':
+		thresholds = []
 		for p in params:
-			key = group_key(names[p])
-			layers.setdefault(key, []).append(p)
-
-		for key, layer in layers.items():
-			per_example_norms = torch.stack(
-				[
-					p.grad_sample.reshape(len(p.grad_sample), -1).norm(2, dim=-1) 
-					for p in layer
-				],
-				dim=0,
-			).norm(2, dim=0)
+			per_example_norms = p.grad_sample.reshape(
+				len(p.grad_sample), -1
+			).norm(2, dim=-1)
 
 			c = per_example_norms.median().clamp(min=1e-6)
 			factor = (c / (per_example_norms + 1e-6)).clamp(max=1.0)
 
-			for p in layer:
-				p.summed_grad = torch.einsum(
-					'i,i...->...', factor.to(p.grad_sample.dtype), p.grad_sample
-				)
-				thresholds[p] = float(c)
+			p.summed_grad = torch.einsum(
+				'i,i...->...',
+				factor.to(p.grad_sample.dtype),
+				p.grad_sample,
+			)
+			thresholds.append(float(c))
 
-	return thresholds
+		return sum(c**2 for c in thresholds) ** 0.5
+
 
 def add_noise(
-	thresholds: dict[nn.Parameter, float],
-	noise_multiplier: float,
+	params: list[nn.Parameter], noise_multiplier: float, sensitivity: float
 ) -> None:
 	"""
-	Adds noise to clipped gradients. Stores clipped and noised result in
-	``p.summed_grad``.
+	Adds noise to clipped gradients.
 
 	Parameters
 	----------
-	thresholds : dict[nn.Parameter, float]
-		A dictionary mapping parameters to their clipping threshold.
 	noise_multiplier : float
 		The Gaussian noise multiplier for differential privacy.
+	sensitivity : float
+		TODO
 	"""
-	for p, c in thresholds.items():
+	if noise_multiplier <= 0 or sensitivity == 0.0:
+		return
+	for p in params:
 		if noise_multiplier > 0:
 			p.summed_grad = p.summed_grad + torch.normal(
 				mean=0.0,
-				std=noise_multiplier
-				* c,  # calibrate with the clipping threshold
+				std=noise_multiplier * sensitivity,
 				size=p.summed_grad.shape,
 				device=p.summed_grad.device,
 			)
@@ -285,7 +197,6 @@ def add_noise(
 def scale_grad(
 	params: list[nn.Parameter],
 	expected_batch_size: int,
-	thresholds: dict[nn.Parameter, float] # TODO
 	# accumulated_iterations: int,
 ) -> None:
 	"""
@@ -299,12 +210,7 @@ def scale_grad(
 		The batch_size used for averaging gradients.
 	"""
 	for p in params:
-		grad = p.summed_grad / expected_batch_size
-		if True:
-			c = thresholds[p]
-			if c not in (0.0, float('inf')):
-				grad = grad / c
-		p.grad = grad
+		p.grad = p.summed_grad / expected_batch_size
 
 
 def zero_grad(params: list[torch.Tensor]) -> None:

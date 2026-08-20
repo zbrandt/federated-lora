@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
+from federated_lora.model import dewindow_grad_samples
 from federated_lora.privacy import privatize, zero_grad
 from federated_lora.server import Server
 
@@ -26,19 +27,18 @@ class RoLoRA:
 		step: int,
 		batch_size: int,
 	) -> None:
-		params = privatize(model, optimizer, batch_size)
-		if params is None:
-			return
-
 		# freeze A and update B in an odd communication round
 		# freeze B and update A in an even communication round
 		for name, parameter in model.named_parameters():
-			if parameter.grad is None:
-				continue
 			if (round % 2 == 0 and 'lora_B' in name) or (
 				round % 2 == 1 and 'lora_A' in name
 			):
-				parameter.grad.zero_()
+				parameter.grad_sample = None
+				parameter.grad = None
+
+		dewindow_grad_samples(model, batch_size)
+
+		params = privatize(model, optimizer)
 
 		optimizer.original_optimizer.step()
 

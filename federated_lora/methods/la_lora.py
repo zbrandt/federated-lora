@@ -5,6 +5,7 @@ import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 from torch.nn import functional as F
 
+from federated_lora.model import dewindow_grad_samples
 from federated_lora.privacy import privatize, zero_grad
 from federated_lora.server import Server
 
@@ -46,25 +47,25 @@ class LALoRA:
 		batch_size: int,
 	) -> None:
 		""" """
-		params = privatize(model, optimizer, batch_size)
-		if params is None:
-			return
+		for name, parameter in model.named_parameters():
+			if ('lora_A' in name and step % 2 == 1) or (
+				'lora_B' in name and step % 2 == 0
+			):
+				parameter.grad_sample = None
+				parameter.grad = None
 
-		# update matrix B on odd local steps
-		# update matrix A on even local steps
+		dewindow_grad_samples(model, batch_size)
+
+		params = privatize(model, optimizer)
+
+		# Don't I have to access grads in the optimizer
 		for name, parameter in model.named_parameters():
 			if parameter.grad is None:
 				continue
 			if 'lora_A' in name:
-				if step % 2 == 1:
-					parameter.grad = self.smooth(parameter.grad, mode='row')
-				else:
-					parameter.grad.zero_()
+				parameter.grad = self.smooth(parameter.grad, mode='row')
 			elif 'lora_B' in name:
-				if step % 2 == 0:
-					parameter.grad = self.smooth(parameter.grad, mode='col')
-				else:
-					parameter.grad.zero_()
+				parameter.grad = self.smooth(parameter.grad, mode='col')
 
 		optimizer.original_optimizer.step()
 
