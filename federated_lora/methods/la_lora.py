@@ -48,8 +48,8 @@ class LALoRA:
 	) -> None:
 		""" """
 		for name, parameter in model.named_parameters():
-			if ('lora_A' in name and step % 2 == 1) or (
-				'lora_B' in name and step % 2 == 0
+			if ('lora_A' in name and step % 2 == 0) or (
+				'lora_B' in name and step % 2 == 1
 			):
 				parameter.grad_sample = None
 				parameter.grad = None
@@ -58,7 +58,6 @@ class LALoRA:
 
 		params = privatize(model, optimizer)
 
-		# Don't I have to access grads in the optimizer
 		for name, parameter in model.named_parameters():
 			if parameter.grad is None:
 				continue

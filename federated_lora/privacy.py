@@ -82,14 +82,13 @@ def privatize(
 		if p.requires_grad and getattr(p, 'grad_sample', None) is not None:
 			params.append(p)
 
-	sensitivity = clip_and_accumulate(
+	thresholds = clip_and_accumulate(
 		params=params,
 		clipping_strategy=optimizer.clipping_strategy,
 		max_grad_norm=optimizer.max_grad_norm,
 	)
-	print(sensitivity)
 
-	add_noise(params, optimizer.noise_multiplier, sensitivity)
+	add_noise(thresholds, optimizer.noise_multiplier)
 	scale_grad(params, optimizer.expected_batch_size)
 
 	return params
@@ -99,7 +98,7 @@ def clip_and_accumulate(
 	params: list[nn.Parameter],
 	clipping_strategy: str,
 	max_grad_norm: float,
-) -> float:
+) -> dict[nn.Parameter, float]:
 	"""
 	Clip and accumulate per-example gradients.
 
@@ -125,10 +124,11 @@ def clip_and_accumulate(
 	float
 		TODO
 	"""
+	thresholds = {}
 	if clipping_strategy == 'none':
 		for p in params:
 			p.summed_grad = p.grad_sample.sum(dim=0)
-		return 0.0
+			thresholds[p] = 0.0
 
 	if clipping_strategy == 'flat':
 		per_example_norms = torch.stack(
@@ -146,11 +146,9 @@ def clip_and_accumulate(
 			p.summed_grad = torch.einsum(
 				'i,i...->...', factor.to(grad_sample.dtype), grad_sample
 			)
-
-		return float(max_grad_norm)
+			thresholds[p] = float(max_grad_norm)
 
 	if clipping_strategy == 'median':
-		thresholds = []
 		for p in params:
 			per_example_norms = p.grad_sample.reshape(
 				len(p.grad_sample), -1
@@ -164,31 +162,30 @@ def clip_and_accumulate(
 				factor.to(p.grad_sample.dtype),
 				p.grad_sample,
 			)
-			thresholds.append(float(c))
+			thresholds[p] = float(c)
 
-		return sum(c**2 for c in thresholds) ** 0.5
+	return thresholds
 
 
 def add_noise(
-	params: list[nn.Parameter], noise_multiplier: float, sensitivity: float
+	thresholds: dict[nn.Parameter, float], noise_multiplier: float
 ) -> None:
 	"""
 	Adds noise to clipped gradients.
 
 	Parameters
 	----------
+	thresholds : dict[nn.Parameter, float]
+		TODO
 	noise_multiplier : float
 		The Gaussian noise multiplier for differential privacy.
-	sensitivity : float
-		TODO
+
 	"""
-	if noise_multiplier <= 0 or sensitivity == 0.0:
-		return
-	for p in params:
+	for p in list(thresholds.keys()):
 		if noise_multiplier > 0:
 			p.summed_grad = p.summed_grad + torch.normal(
 				mean=0.0,
-				std=noise_multiplier * sensitivity,
+				std=0.098 * thresholds[p],
 				size=p.summed_grad.shape,
 				device=p.summed_grad.device,
 			)

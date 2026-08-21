@@ -89,10 +89,6 @@ class Server:
 				uploads.append(upload)
 				losses.append(loss)
 
-			noise_multiplier = float(
-				getattr(selected[0].optimizer, 'noise_multiplier', 0.0)
-			)
-
 			# aggregate client uploads into the new global state
 			num_examples = [client.num_examples for client in selected]
 			agg = self.method.aggregate(
@@ -133,7 +129,6 @@ class Server:
 				'lr_A': lr_A,
 				'lr_B': lr_B,
 				'lr_head': lr_head,
-				'noise_multiplier': noise_multiplier,
 			}
 
 			history.append(metrics)
@@ -144,7 +139,6 @@ class Server:
 				f'test_loss={metrics["test_loss"]:.4f} '
 				f'top1_acc={metrics["top1_acc"]:.4f} '
 				f'top5_acc={metrics["top5_acc"]:.4f} '
-				f'clip={metrics.get("clip_threshold_mean")} '
 				f'train_s={t1 - t0:.1f} eval_s={t2 - t1:.1f}',
 				flush=True,
 			)
