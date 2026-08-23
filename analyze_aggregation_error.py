@@ -103,7 +103,7 @@ def main() -> None:
         writer.writerow(['label', 'method', 'round', 'aggregation_error'])
         for round_file in round_files:
             round_num = int(round_file.stem.replace('round', ''))
-            saved = torch.load(round_file, weights_only=False)
+            saved = torch.load(round_file, weights_only=False, map_location='cpu')
             uploads, num_examples = saved['uploads'], saved['num_examples']
 
             for method_name in args.methods:

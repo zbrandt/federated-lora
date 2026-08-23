@@ -57,15 +57,21 @@ Three modes:
              nodes total. Results -> results/sweep/dp_coupling/<fn>/, logs ->
              logs/sweep/dp_coupling/.
 
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 0.5; exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 1;   exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 3;   exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py compare --eps 8;   exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py hetero; exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 2;  exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 8;  exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 16; exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py rank --rank 32; exec bash'
+  cd into the repo first (these commands resolve -c from $(pwd), so they only
+  work run from inside the repo directory -- the repo isn't always under
+  plain $HOME on every node, e.g. it's under /nas/lrz/home/<lrzid>/ on ICE):
+
+    cd /path/to/federated-lora
+
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py compare --eps 0.5; exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py compare --eps 1;   exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py compare --eps 3;   exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py compare --eps 8;   exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py hetero; exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py rank --rank 2;  exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py rank --rank 8;  exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py rank --rank 16; exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py rank --rank 32; exec bash'
 
     # grid: one node per (eps, rank) pair, 16 total. Run
     #   python sweep.py grid --list
@@ -75,9 +81,9 @@ Three modes:
     #   python sweep.py spread-grid --list
     # to print all 16 ready-to-paste tmux commands instead of typing them out.
 
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py coupling --coupling-fn linear; exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py coupling --coupling-fn threshold; exec bash'
-    tmux new-session -d -s run -c ~/federated-lora '.venv/bin/python sweep.py coupling --coupling-fn rank_rule; exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py coupling --coupling-fn linear; exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py coupling --coupling-fn threshold; exec bash'
+    tmux new-session -d -s run -c "$(pwd)" '/home/go59won/.venvs/federated-lora/bin/python sweep.py coupling --coupling-fn rank_rule; exec bash'
 
 Pass --smoke for a correctness+timing check before committing a node to a
 full run, e.g. `sweep.py compare --eps 3 --smoke` or `sweep.py rank --rank 8
@@ -98,7 +104,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent
-PYTHON = sys.executable  # use .venv/bin/python (or .venv/Scripts/python.exe) on the nodes
+PYTHON = sys.executable  # use /home/go59won/.venvs/federated-lora/bin/python (or .venv/Scripts/python.exe) on the nodes
 
 BENCHMARK = 'cifar100'
 METHODS = ['rblora', 'hetlora', 'flora', 'flexlora', 'ffa_lora']
@@ -282,8 +288,8 @@ def print_coupling_commands():
     """Print all 3 ready-to-paste tmux launch lines for the coupling-strategy comparison."""
     for fn in COUPLING_STRATEGIES:
         print(
-            "tmux new-session -d -s run -c ~/federated-lora "
-            f"'.venv/bin/python sweep.py coupling --coupling-fn {fn}; exec bash'"
+            'tmux new-session -d -s run -c "$(pwd)" '
+            f"'/home/go59won/.venvs/federated-lora/bin/python sweep.py coupling --coupling-fn {fn}; exec bash'"
         )
 
 
@@ -338,8 +344,8 @@ def print_grid_commands():
     for eps in EPS_VALUES:
         for r in RANK_VALUES:
             print(
-                "tmux new-session -d -s run -c ~/federated-lora "
-                f"'.venv/bin/python sweep.py grid --eps {eps} --rank {r}; exec bash'"
+                'tmux new-session -d -s run -c "$(pwd)" '
+                f"'/home/go59won/.venvs/federated-lora/bin/python sweep.py grid --eps {eps} --rank {r}; exec bash'"
             )
 
 
@@ -401,8 +407,8 @@ def print_spread_grid_commands():
     for gamma in SPREAD_LEVELS:
         for kappa in SPREAD_LEVELS:
             print(
-                "tmux new-session -d -s run -c ~/federated-lora "
-                f"'.venv/bin/python sweep.py spread-grid --gamma {gamma} --kappa {kappa}; exec bash'"
+                'tmux new-session -d -s run -c "$(pwd)" '
+                f"'/home/go59won/.venvs/federated-lora/bin/python sweep.py spread-grid --gamma {gamma} --kappa {kappa}; exec bash'"
             )
 
 
