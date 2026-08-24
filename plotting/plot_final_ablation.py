@@ -9,9 +9,15 @@ handled:
                            (rank held fixed across clients, DP epsilon varies)
   - het_rank_fixed_dp   -- results/sweep/dp_spread_grid/gamma0.0_kappa1.0
                            (rank varies across clients, DP epsilon held fixed)
-  - coupling_linear/threshold/rank_rule -- results/sweep/dp_coupling/<fn>
+  - coupling_linear/threshold -- results/sweep/dp_coupling/<fn>
                            (both vary together, rank coupled to each client's
                            epsilon via the named strategy)
+
+rank_rule is deliberately excluded here -- at num_clients=4 its fitted model
+never prefers anything but rank 16 across the tested epsilon range, so its
+"coupling" run is actually a constant-rank baseline, not a real coupling
+strategy. See figures/sweep/optimal_rank_curve.png for the real measured
+accuracy-vs-rank relationship instead.
 
 Answers whether deliberately coupling rank to a client's privacy budget beats
 leaving either axis fixed while the other is heterogeneous.
@@ -50,7 +56,6 @@ SCENARIOS = [
     ("het rank\n+ fixed DP", "results/sweep/dp_spread_grid/gamma0.0_kappa1.0"),
     ("coupled\n(linear)", "results/sweep/dp_coupling/linear"),
     ("coupled\n(threshold)", "results/sweep/dp_coupling/threshold"),
-    ("coupled\n(rank_rule)", "results/sweep/dp_coupling/rank_rule"),
 ]
 
 

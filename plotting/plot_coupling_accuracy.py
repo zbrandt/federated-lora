@@ -1,7 +1,15 @@
 #!/usr/bin/env python
 """
 plot_coupling_accuracy.py -- accuracy comparison of the DP<->rank coupling
-strategies (linear vs threshold vs rank_rule).
+strategies (linear vs threshold).
+
+rank_rule is deliberately excluded: at num_clients=4 (the domain this sweep
+actually runs in), the fitted model's noise penalty never gets large enough
+across the tested epsilon range to prefer anything but rank 16, so its
+"coupling" run silently degenerated into a constant-rank baseline rather than
+real per-client coupling -- comparing it here as if it were a third coupling
+strategy is misleading. See figures/sweep/optimal_rank_curve.png for the real
+measured accuracy-vs-rank relationship instead.
 
 Reads results/sweep/dp_coupling/{linear,threshold,rank_rule}/*.json (one file
 per method) and draws one small-multiple subplot per method, each with one
@@ -31,16 +39,14 @@ SECONDARY_INK = "#52514e"
 MUTED = "#898781"
 GRID = "#e1e0d9"
 
-STRATEGIES = ["linear", "threshold", "rank_rule"]
+STRATEGIES = ["linear", "threshold"]
 STRATEGY_COLORS = {
     "linear": "#2a78d6",
     "threshold": "#eb6834",
-    "rank_rule": "#1baf7a",
 }
 STRATEGY_STYLES = {
     "linear": "-",
     "threshold": "--",
-    "rank_rule": ":",
 }
 METRIC_LABELS = {
     "top1_acc": "top-1 accuracy (%)",

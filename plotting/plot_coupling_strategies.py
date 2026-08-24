@@ -12,9 +12,7 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from federated_lora.config import Config
-from federated_lora.coupling import linear_coupling, rank_rule_coupling, threshold_coupling
-from federated_lora.rank_rule import shard_size
+from federated_lora.coupling import linear_coupling, threshold_coupling
 
 OUTPUT_PATH = Path("figures/sweep/coupling_strategies.png")
 
@@ -24,7 +22,6 @@ MUTED = "#898781"
 GRID = "#e1e0d9"
 LINEAR_COLOR = "#2a78d6"
 THRESHOLD_COLOR = "#eb6834"
-RANK_RULE_COLOR = "#1baf7a"
 
 
 def main() -> None:
@@ -36,41 +33,22 @@ def main() -> None:
     args = parser.parse_args()
 
     candidate_ranks = tuple(args.candidate_ranks)
-    # rank_rule_coupling calls Opacus's PRV accountant search per point, and
-    # each call is genuinely slow (multiple seconds) at global_rounds=100 x
-    # local_steps=20=2000 steps -- keep this grid small. 18 is still plenty
-    # for a clean-looking step function on a log x-axis.
-    eps_grid = np.geomspace(args.eps_min, args.eps_max, 18)
-
-    # rank_rule_coupling needs a Config to compute sigma(eps) -- num_clients=20
-    # deliberately, since that's the domain rank_rule.py is actually calibrated
-    # on right now (see the num_clients=4 vs 20 mismatch discussion). This plot
-    # is explanatory, not the empirical item-9 comparison, so it shows the
-    # strategy operating inside its valid calibration domain rather than the
-    # out-of-domain num_clients=4 extrapolation (which currently just picks
-    # rank 16 everywhere and wouldn't illustrate anything).
-    rr_config = Config(task='cifar100', method='rblora', num_clients=20)
-    rr_size = shard_size(rr_config)
+    eps_grid = np.geomspace(args.eps_min, args.eps_max, 400)
 
     linear_ranks = np.array([linear_coupling(float(e), candidate_ranks) for e in eps_grid])
     threshold_ranks = np.array([threshold_coupling(float(e), candidate_ranks) for e in eps_grid])
-    rank_rule_ranks = np.array([
-        rank_rule_coupling(float(e), candidate_ranks, config=rr_config, size=rr_size) for e in eps_grid
-    ])
-    disagree = (linear_ranks != threshold_ranks) | (linear_ranks != rank_rule_ranks)
+    disagree = linear_ranks != threshold_ranks
 
     fig, ax = plt.subplots(figsize=(9.5, 5.5))
 
     ax.step(eps_grid, linear_ranks, where="post", linewidth=2, color=LINEAR_COLOR, label="linear_coupling")
     ax.step(eps_grid, threshold_ranks, where="post", linewidth=2, color=THRESHOLD_COLOR,
             linestyle="--", label="threshold_coupling")
-    ax.step(eps_grid, rank_rule_ranks, where="post", linewidth=2, color=RANK_RULE_COLOR,
-            linestyle=":", label="rank_rule_coupling (num_clients=20 calibration)")
 
     if disagree.any():
         ax.fill_between(eps_grid, min(candidate_ranks), max(candidate_ranks),
                          where=disagree, color=MUTED, alpha=0.12, step="post",
-                         label="any strategy disagrees")
+                         label="strategies disagree")
 
     ax.set_xscale("log")
     ax.set_yscale("log", base=2)
@@ -78,7 +56,7 @@ def main() -> None:
     ax.set_yticklabels([str(r) for r in candidate_ranks])
     ax.set_xlabel("client epsilon", fontsize=10, color=SECONDARY_INK)
     ax.set_ylabel("assigned LoRA rank", fontsize=10, color=SECONDARY_INK)
-    ax.set_title("rank<->DP coupling strategies: linear vs threshold vs rank_rule", fontsize=12, color=INK, pad=10)
+    ax.set_title("rank<->DP coupling strategies: linear vs threshold", fontsize=12, color=INK, pad=10)
     ax.grid(True, which="both", color=GRID, linewidth=0.8)
     ax.set_axisbelow(True)
     ax.legend(frameon=False, labelcolor=SECONDARY_INK, fontsize=8.5, loc="upper left")
@@ -96,7 +74,7 @@ def main() -> None:
     plt.close(fig)
 
     disagreement_frac = disagree.mean()
-    print(f"any-strategy disagreement across eps in [{args.eps_min}, {args.eps_max}]: {disagreement_frac:.1%} of sampled points")
+    print(f"disagreement across eps in [{args.eps_min}, {args.eps_max}]: {disagreement_frac:.1%} of sampled points")
     print(f"wrote {output_path}")
 
 
