@@ -58,6 +58,9 @@ PANELS = [
 ]
 
 
+EXPECTED_METHODS = 4  # GRID_METHODS: rblora, hetlora, flora, flexlora
+
+
 def load_cell(gamma: float, kappa: float) -> tuple[list[int], list[float], int] | None:
     cell_dir = RESULTS_ROOT / f"gamma{gamma}_kappa{kappa}"
     if not cell_dir.exists():
@@ -108,17 +111,21 @@ def main() -> None:
     fig, axes = plt.subplots(1, 3, figsize=(16, 6.2), sharey=True)
 
     for ax, (title, _), levels_data in zip(axes, PANELS, panel_data):
-        completed = sum(1 for c in levels_data.values() if c is not None)
+        fully_complete = sum(1 for c in levels_data.values() if c is not None and c[2] == EXPECTED_METHODS)
+        partial = sum(1 for c in levels_data.values() if c is not None and c[2] < EXPECTED_METHODS)
         for lvl in LEVELS:
             cell = levels_data[lvl]
             if cell is None:
                 continue
             rounds, means, n_methods = cell
+            flag = "" if n_methods == EXPECTED_METHODS else " !"
             ax.plot(rounds, means, linewidth=2.2, color=LEVEL_COLORS[lvl], solid_capstyle="round",
-                     zorder=3, label=f"level {lvl:.2f} (n={n_methods} methods)")
+                     zorder=3, label=f"level {lvl:.2f} (n={n_methods}/{EXPECTED_METHODS} methods{flag})")
 
-        subtitle = f"{completed}/4 levels complete"
-        if completed < len(LEVELS):
+        subtitle = f"{fully_complete}/4 levels complete"
+        if partial:
+            subtitle += f", {partial} partial"
+        if fully_complete < len(LEVELS):
             subtitle = "PARTIAL -- " + subtitle
             ax.text(0.5, 0.5, "PARTIAL", transform=ax.transAxes, fontsize=42, color=MUTED,
                      alpha=0.18, ha="center", va="center", rotation=28, zorder=1, weight="bold")
@@ -140,9 +147,14 @@ def main() -> None:
 
     fig.suptitle("Does heterogeneity help or hurt? epsilon-spread vs rank-spread vs combined",
                  fontsize=14, color=INK, y=1.02)
-    fig.text(0.5, -0.02,
-              "Baseline (gamma=0, kappa=0) not yet run -- panels currently show only their gamma/kappa=1.0 endpoint.",
-              ha="center", fontsize=9, color=MUTED, style="italic")
+    baseline = load_cell(0.0, 0.0)
+    if baseline is None:
+        footer = "Baseline (gamma=0, kappa=0) not yet run."
+    elif baseline[2] < EXPECTED_METHODS:
+        footer = f"Baseline (gamma=0, kappa=0) only {baseline[2]}/{EXPECTED_METHODS} methods done -- its line above is partial (marked '!' in the legend)."
+    else:
+        footer = "Lines marked '!' in the legend are missing one or more methods -- treat those means as provisional."
+    fig.text(0.5, -0.02, footer, ha="center", fontsize=9, color=MUTED, style="italic")
 
     fig.tight_layout()
     output_path = Path(args.output)
