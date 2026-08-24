@@ -10,16 +10,20 @@ from experiment import build
 from federated_lora.config import Config
 from federated_lora.model import get_trainable_parameters
 
-
-TASK = "cifar100"
+TASK = 'cifar100'
 METHODS = ['dp_lora', 'rolora', 'ffa_lora', 'la_lora']
 NUM_CLIENTS = 2
 GLOBAL_ROUNDS = 2
 LOCAL_STEPS = 2
 BATCH_SIZE = 16
 EVAL_SUBSET = 128
+TARGET_EPSILON = None
+CLIPPING = 'none'
+LR = 0.2
+SEED = 42
 
 checks: list[tuple[str, bool, str]] = []
+
 
 def check(name: str, ok: bool, detail: str = '') -> None:
 	checks.append((name, bool(ok), detail))
@@ -34,6 +38,12 @@ def run_method(method: str) -> None:
 	config = Config(
 		task=TASK,
 		method=method,
+		target_epsilon=TARGET_EPSILON,
+		clipping=CLIPPING,
+		lr_a=LR,
+		lr_b=LR,
+		lr_head=LR,
+		seed=42,
 		num_clients=NUM_CLIENTS,
 		global_rounds=GLOBAL_ROUNDS,
 		local_steps=LOCAL_STEPS,
@@ -46,20 +56,19 @@ def run_method(method: str) -> None:
 
 	trainable = get_trainable_parameters(server.model)
 	# total = sum(p.numel() for p in server.model.parameters())
-	
-	
+
 	backbone_frozen = sum(
 		1
 		for n, p in server.model.named_parameters()
 		if not p.requires_grad and 'lora_' not in n and 'classifier' not in n
 	)
-	
+
 	# check(
 	# 	f'{method}: backbone size ~ViT-Base',
 	# 	80e6 < total < 95e6,
 	# 	f'{total / 1e6:.1f}M params',
 	# )
-	
+
 	check(
 		f'{method}: LoRA adapters trainable',
 		any('lora_' in n for n in trainable),

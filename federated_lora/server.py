@@ -22,6 +22,7 @@ class Server:
 		clients: list[Client],
 		sample_rate: float,
 		test_dataloader: DataLoader,
+		delta: float,
 		device: str,
 		seed: int,
 	) -> None:
@@ -31,6 +32,7 @@ class Server:
 		self.clients = clients
 		self.sample_rate = sample_rate
 		self.test_dataloader = test_dataloader
+		self.delta = delta
 		self.device = device
 		self.seed = seed
 
@@ -130,6 +132,14 @@ class Server:
 				'lr_B': lr_B,
 				'lr_head': lr_head,
 			}
+
+			epsilons = [
+				client.privacy_engine.get_epsilon(delta=self.delta)
+				for client in self.clients
+				if client.optimizer.noise_multiplier > 0
+				and client.privacy_engine.accountant.history
+			]
+			metrics['epsilon_spent'] = max(epsilons) if epsilons else None
 
 			history.append(metrics)
 

@@ -44,14 +44,14 @@ def compute_noise_level(
 	if not target_epsilon:
 		return 0.0
 
-	sample_rate = min(1.0, batch_size / max(1, num_examples))
+	sample_rate = 1.0 / max(1, num_examples // batch_size)
 	steps = global_rounds * local_steps
 	sigma = get_noise_multiplier(
 		target_epsilon=target_epsilon,
 		target_delta=target_delta,
 		sample_rate=sample_rate,
 		steps=steps,
-		accountant='prv',
+		accountant='rdp',
 	)
 
 	print(f'size: {num_examples}, sample_rate: {sample_rate}, sigma: {sigma}')
@@ -113,16 +113,16 @@ def clip_and_accumulate(
 	----------
 	params : list[nn.Parameter]
 		The list of parameters with per-example gradients.
-	strategy : str
-		The clipping strategy (``'median'``, ``'flat'``, or ``'none'``),
-		defaults to ``'median'``.
+	clipping_strategy : str
+		The clipping strategy (``'median'``, ``'flat'``, or ``'none'``).
 	max_grad_norm : float
 		The global clipping bound used by the ``'flat'`` strategy.
 
 	Returns
 	-------
-	float
-		TODO
+	dict[nn.Parameter, float]
+		A mapping from each parameter to the clipping threshold applied to it
+		(used to scale the Gaussian noise).
 	"""
 	thresholds = {}
 	if clipping_strategy == 'none':
@@ -130,7 +130,7 @@ def clip_and_accumulate(
 			p.summed_grad = p.grad_sample.sum(dim=0)
 			thresholds[p] = 0.0
 
-	if clipping_strategy == 'flat':
+	elif clipping_strategy == 'flat':
 		per_example_norms = torch.stack(
 			[
 				p.grad_sample.reshape(len(p.grad_sample), -1).norm(2, dim=-1)
@@ -148,7 +148,7 @@ def clip_and_accumulate(
 			)
 			thresholds[p] = float(max_grad_norm)
 
-	if clipping_strategy == 'median':
+	elif clipping_strategy == 'median':
 		for p in params:
 			per_example_norms = p.grad_sample.reshape(
 				len(p.grad_sample), -1
@@ -163,6 +163,12 @@ def clip_and_accumulate(
 				p.grad_sample,
 			)
 			thresholds[p] = float(c)
+
+	else:
+		raise ValueError(
+			f'unknown clipping strategy: {clipping_strategy!r} '
+			"(expected 'median', 'flat', or 'none')"
+		)
 
 	return thresholds
 
@@ -185,7 +191,7 @@ def add_noise(
 		if noise_multiplier > 0:
 			p.summed_grad = p.summed_grad + torch.normal(
 				mean=0.0,
-				std=0.098 * thresholds[p],
+				std=noise_multiplier * thresholds[p],
 				size=p.summed_grad.shape,
 				device=p.summed_grad.device,
 			)

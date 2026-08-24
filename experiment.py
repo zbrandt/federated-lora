@@ -10,16 +10,36 @@ from pathlib import Path
 import numpy as np
 import torch
 from opacus import PrivacyEngine
+from peft import LoraConfig, get_peft_model
 from torch.optim import SGD
 from torch.optim.lr_scheduler import ExponentialLR
+from transformers import AutoModelForImageClassification
 
 from federated_lora.client import Client
-from federated_lora.config import TASKS, Config
-from federated_lora.data import load_datasets, prepare_dataloaders
+from federated_lora.data.vision import prepare_dataloaders, prepare_cifar100, prepare_tinyimagenet
 from federated_lora.methods import METHODS
-from federated_lora.model import create_peft_model, group_trainable_parameters
 from federated_lora.privacy import compute_noise_level
 from federated_lora.server import Server
+
+NOISE_MULTIPLIERS = {
+	'cifar100': {1.0: 0.56, 2.0: 0.29, 3.0: 0.195},
+	'tinyimagenet': {1.0: 0.283, 2.0: 0.146, 3.0:0.098}
+}
+
+MODELS = {
+	'vit': 'google/vit-base-patch16-224-in21k',
+	'swin': 'microsoft/swin-tiny-patch4-window7-224'
+}
+
+DATASETS = {
+	'cifar100': prepare_cifar100.load_datasets,
+	'tinyimagenet': prepare_tinyimagenet.load_datasets
+}
+
+LABELS = {
+	'cifar100': 100,
+	'tinyimagenet': 200,
+}
 
 
 def parse_args():
@@ -27,105 +47,135 @@ def parse_args():
 
 	parser.add_argument('--task', type=str, required=True)
 	parser.add_argument('--method', type=str, required=True)
-	parser.add_argument('--batch-size', type=int, default=16)
-	# parser.add_argument('--rounds', type=int, default=100)
+
+	parser.add_argument('--batch_size', type=int, default=16)
 	parser.add_argument('--epsilon', type=float, default=3.0)
-	parser.add_argument('--clipping', type=str, default='median')
-	parser.add_argument('--lr-a', type=float, default=0.20)
-	parser.add_argument('--lr-b', type=float, default=0.20)
-	parser.add_argument('--lr-head', type=float, default=0.20)
+	parser.add_argument('--delta', type=float, default=1e-5)
+	parser.add_argument('--max_grad_norm', type=float, default=2.0)
+
+	parser.add_argument('--model', type=str, required=True)
+
+	parser.add_argument('--num_clients', type=int, default=8)
+	parser.add_argument('--sample_rate', type=float, default=0.5)
+
+	parser.add_argument('--dirichlet_alpha', type=float, default=0.1)
+
+	parser.add_argument('--global_rounds', type=int, default=100)
+	parser.add_argument('--local_steps', type=int, default=20)
+
+	parser.add_argument('--lora_rank', type=int, default=16)
+	parser.add_argument('--lora_alpha', type=int, default=16)
+	parser.add_argument('--lora_dropout', type=float, default=0.05)
+
+	parser.add_argument('--lr_head', type=float, default=0.20)
+	parser.add_argument('--lr_a', type=float, default=0.20)
+	parser.add_argument('--lr_b', type=float, default=0.20)
+	parser.add_argument('--lr_decay', type=float, default=0.99)
+
 	parser.add_argument('--seed', type=int, default=42)
-	parser.add_argument('--output-dir', type=str, default='results/')
+	parser.add_argument('--output_dir', type=str, default='./logs')
 
 	return parser.parse_args()
 
 
-def build(config: Config) -> Server:
-	""" """
-	random.seed(config.seed)
-	np.random.seed(config.seed)
+def run(args: argparse.Namespace) -> None:
+	random.seed(args.seed)
+	np.random.seed(args.seed)
 
-	torch.manual_seed(config.seed)
-	torch.cuda.manual_seed(config.seed)
-	torch.cuda.manual_seed_all(config.seed)
+	torch.manual_seed(args.seed)
+	torch.cuda.manual_seed(args.seed)
+	torch.cuda.manual_seed_all(args.seed)
 
 	torch.backends.cudnn.deterministic = True
 	torch.backends.cudnn.benchmark = False
 
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-	method = METHODS[config.method]()
+	method = METHODS[args.method]()
 
-	model = create_peft_model(
-		name=config.model,
-		num_labels=config.num_labels,
-		lora_rank=config.lora_rank,
-		target_modules=config.target_modules,
-		lora_alpha=config.lora_alpha,
-		lora_dropout=config.lora_dropout,
-		method=method,
-		device=device,
-		experiment=config.experiment,
+	if args.model == 'swin' or args.model == 'vit':
+		base = AutoModelForImageClassification.from_pretrained(
+			MODELS[args.model], num_labels=LABELS[args.task]
+		).to(device)
+
+		peft_config = LoraConfig(
+			r=args.lora_rank,
+			lora_alpha=args.lora_alpha,
+			lora_dropout=args.lora_dropout,
+			target_modules=('query', 'value'),
+			bias='none',
+		)
+
+	model = get_peft_model(base, peft_config)
+
+	method.set_target_modules(model)
+
+	data_dir = DATASETS[args.task](
+		num_clients=args.num_clients,
+		dirichlet_alpha=args.dirichlet_alpha,
+		seed=args.seed,
 	)
 
-	data_dir = load_datasets(
-		dataset=config.dataset,
-		num_clients=config.num_clients,
-		alpha=config.dirichlet_alpha,
-		task=config.task,
-		experiment=config.experiment,
-		seed=config.seed,
-		label_field=config.label_field,
-		image_field=config.image_field,
-		eval_split=config.eval_split,
-	)
-
-	train_dataloaders, test_dataloader = prepare_dataloaders(
-		model=config.model,
-		data_dir=data_dir,
-		num_clients=config.num_clients,
-		batch_size=config.batch_size,
-		task=config.task,
-		experiment=config.experiment,
-	)
+	if args.model == 'swin' or args.model == 'vit':
+		train_dataloaders, test_dataloader = prepare_dataloaders(
+			model=MODELS[args.model],
+			data_dir=data_dir,
+			num_clients=args.num_clients,
+			batch_size=args.batch_size,
+			task=args.task,
+		)
 
 	clients = []
 	for i, dataloader in enumerate(train_dataloaders):
 		local_model = copy.deepcopy(model).to('cpu')
 		num_examples = len(dataloader.dataset)
 
-		params_A, params_B, params_head = group_trainable_parameters(
-			local_model
-		)
+		params_A, params_B, params_head = [], [], []
+		for name, param in local_model.named_parameters():
+			if not param.requires_grad:
+				continue
+			if 'lora_A' in name:
+				params_A.append(param)
+			elif 'lora_B' in name:
+				params_B.append(param)
+			else:
+				params_head.append(param)
+
 		optimizer = SGD(
 			[
-				{'params': params_A, 'lr': config.lr_a},
-				{'params': params_B, 'lr': config.lr_b},
-				{'params': params_head, 'lr': config.lr_head},
+				{'params': params_A, 'lr': args.lr_a},
+				{'params': params_B, 'lr': args.lr_b},
+				{'params': params_head, 'lr': args.lr_head},
 			],
 		)
 
-		noise_multiplier = compute_noise_level(
-			num_examples=num_examples,
-			batch_size=config.batch_size,
-			global_rounds=config.global_rounds,
-			local_steps=config.local_steps,
-			target_epsilon=config.target_epsilon,
-			target_delta=config.target_delta,
-		)
+		if args.model == 'vit':
+			noise_multiplier = compute_noise_level(
+				num_examples=num_examples,
+				batch_size=args.batch_size,
+				global_rounds=args.global_rounds,
+				local_steps=args.local_steps,
+				target_epsilon=args.epsilon,
+				target_delta=args.delta,
+			)
+		elif args.model == 'swin':
+			noise_multiplier = NOISE_MULTIPLIERS[args.task][args.epsilon]
 
-		privacy_engine = PrivacyEngine()
+		privacy_engine = PrivacyEngine(accountant="rdp")
 		local_model, optimizer, dataloader = privacy_engine.make_private(
 			module=local_model,
 			optimizer=optimizer,
 			data_loader=dataloader,
 			noise_multiplier=noise_multiplier,
-			max_grad_norm=config.max_grad_norm,
+			max_grad_norm=args.max_grad_norm,
 		)
 
-		optimizer.clipping_strategy = config.clipping
+		if args.model == 'vit':
+			optimizer.clipping_strategy = 'flat'
+		elif args.model == 'swin':
+			optimizer.clipping_strategy = 'median'
 
-		scheduler = ExponentialLR(optimizer, gamma=config.lr_decay)
+		scheduler = ExponentialLR(optimizer, gamma=args.lr_decay)
 
 		clients.append(
 			Client(
@@ -136,59 +186,38 @@ def build(config: Config) -> Server:
 				scheduler=scheduler,
 				privacy_engine=privacy_engine,
 				num_examples=num_examples,
-				steps=config.local_steps,
+				steps=args.local_steps,
 				device=device,
 			)
 		)
 
-	return Server(
+	server = Server(
 		model=model,
 		method=method,
-		rounds=config.global_rounds,
+		rounds=args.global_rounds,
 		clients=clients,
-		sample_rate=config.client_sample_rate,
+		sample_rate=args.sample_rate,
 		test_dataloader=test_dataloader,
+		delta=args.delta,
 		device=device,
-		seed=config.seed,
-	)
-
-
-def run(args: list[str]) -> dict:
-	""" """
-	config = Config(
-		task=args.task,
-		method=args.method,
-		batch_size=args.batch_size,
-		# global_rounds=args.rounds,
-		target_epsilon=args.epsilon,
-		lr_a=args.lr_a,
-		lr_b=args.lr_b,
-		lr_head=args.lr_head,
 		seed=args.seed,
-		output_dir=args.output_dir,
-		clipping=args.clipping,
 	)
 
-	for key, value in TASKS[args.task].items():
-		setattr(config, key, value)
-
-	if not args.epsilon:
-		config.clipping = 'none'
-
-	server = build(config)
 	history = server.run()
-	result = {'config': asdict(config), 'history': history}
+	result = {'config': vars(args), 'history': history}
 
 	path = (
-		Path(config.output_dir)
-		/ f'{config.method}_{config.task}_seed{config.seed}.json'
+		Path(args.output_dir)
+		/ f'{args.method}_{args.model}_{args.task}_eps{args.epsilon:g}_seed{args.seed}.json'
 	)
 
 	path.parent.mkdir(parents=True, exist_ok=True)
 	path.write_text(json.dumps(result, indent=2), encoding='utf-8')
-	return result
 
 
-if __name__ == '__main__':
+def main():
 	args = parse_args()
 	run(args)
+
+if __name__ == "__main__":
+	main()

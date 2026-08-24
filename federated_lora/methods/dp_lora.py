@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
-from federated_lora.model import dewindow_grad_samples
 from federated_lora.privacy import privatize, zero_grad
+from federated_lora.model import dewindow_grad_samples
 from federated_lora.server import Server
 
 
@@ -29,11 +29,18 @@ class DPLoRA:
 	) -> None:
 		dewindow_grad_samples(model, batch_size)
 
-		params = privatize(model, optimizer)
+		if optimizer.clipping_strategy == 'flat':
+			if optimizer.pre_step():
+				optimizer.original_optimizer.step()
+		else:
+			if optimizer.step_hook:
+				optimizer.step_hook(optimizer)
 
-		optimizer.original_optimizer.step()
+			params = privatize(model, optimizer)
 
-		zero_grad(params)
+			optimizer.original_optimizer.step()
+			zero_grad(params)
+	
 		optimizer.zero_grad()
 
 	def aggregate(
@@ -41,4 +48,5 @@ class DPLoRA:
 		uploads: list[dict[str, torch.Tensor]],
 		num_examples: list[int],
 	) -> dict[str, torch.Tensor]:
+		# DP-LoRA weights clients by data size (paper Eq 4)
 		return Server.fedavg(uploads, num_examples)

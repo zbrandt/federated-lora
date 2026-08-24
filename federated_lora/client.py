@@ -69,6 +69,10 @@ class Client:
 			}
 			batch_size = next(iter(batch.values())).shape[0]
 
+			# skip empty Poisson lots (a loss over 0 examples is nan)
+			if batch_size == 0:
+				continue
+
 			self.optimizer.zero_grad(set_to_none=True)
 			out = self.model(**batch)
 			loss = out.loss
