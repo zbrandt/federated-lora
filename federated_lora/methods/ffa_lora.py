@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
-from federated_lora.privacy import privatize, zero_grad
 from federated_lora.model import dewindow_grad_samples
+from federated_lora.privacy import privatize, zero_grad
 from federated_lora.server import Server
 
 
@@ -30,7 +30,7 @@ class FFALoRA:
 		batch_size: int,
 	) -> None:
 		dewindow_grad_samples(model, batch_size)
-		
+
 		if optimizer.clipping_strategy == 'flat':
 			if optimizer.pre_step():
 				optimizer.original_optimizer.step()
@@ -42,7 +42,7 @@ class FFALoRA:
 
 			optimizer.original_optimizer.step()
 			zero_grad(params)
-	
+
 		optimizer.zero_grad()
 
 	def aggregate(

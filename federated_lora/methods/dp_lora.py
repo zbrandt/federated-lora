@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 
-from federated_lora.privacy import privatize, zero_grad
 from federated_lora.model import dewindow_grad_samples
+from federated_lora.privacy import privatize, zero_grad
 from federated_lora.server import Server
 
 
@@ -40,7 +40,7 @@ class DPLoRA:
 
 			optimizer.original_optimizer.step()
 			zero_grad(params)
-	
+
 		optimizer.zero_grad()
 
 	def aggregate(

@@ -15,9 +15,9 @@ EPSILONS = [3, 2, 1]
 SEEDS = [42]
 
 LR = {
-	3: {'dp_lora': 0.02, 'ffa_lora': 0.02, 'rolora': 0.02, 'la_lora': 0.02},
-	2: {'dp_lora': 0.02, 'ffa_lora': 0.02, 'rolora': 0.02, 'la_lora': 0.02},
-	1: {'dp_lora': 0.01, 'ffa_lora': 0.02, 'rolora': 0.01, 'la_lora': 0.02},
+	3: {'dp_lora': 0.2, 'ffa_lora': 0.2, 'rolora': 0.2, 'la_lora': 0.2},
+	2: {'dp_lora': 0.2, 'ffa_lora': 0.2, 'rolora': 0.2, 'la_lora': 0.2},
+	1: {'dp_lora': 0.1, 'ffa_lora': 0.2, 'rolora': 0.1, 'la_lora': 0.2},
 }
 
 

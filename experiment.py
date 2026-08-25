@@ -16,24 +16,28 @@ from torch.optim.lr_scheduler import ExponentialLR
 from transformers import AutoModelForImageClassification
 
 from federated_lora.client import Client
-from federated_lora.data.vision import prepare_dataloaders, prepare_cifar100, prepare_tinyimagenet
+from federated_lora.data.vision import (
+	prepare_cifar100,
+	prepare_dataloaders,
+	prepare_tinyimagenet,
+)
 from federated_lora.methods import METHODS
 from federated_lora.privacy import compute_noise_level
 from federated_lora.server import Server
 
 NOISE_MULTIPLIERS = {
 	'cifar100': {1.0: 0.56, 2.0: 0.29, 3.0: 0.195},
-	'tinyimagenet': {1.0: 0.283, 2.0: 0.146, 3.0:0.098}
+	'tinyimagenet': {1.0: 0.283, 2.0: 0.146, 3.0: 0.098},
 }
 
 MODELS = {
 	'vit': 'google/vit-base-patch16-224-in21k',
-	'swin': 'microsoft/swin-tiny-patch4-window7-224'
+	'swin': 'microsoft/swin-tiny-patch4-window7-224',
 }
 
 DATASETS = {
 	'cifar100': prepare_cifar100.load_datasets,
-	'tinyimagenet': prepare_tinyimagenet.load_datasets
+	'tinyimagenet': prepare_tinyimagenet.load_datasets,
 }
 
 LABELS = {
@@ -73,7 +77,7 @@ def parse_args():
 	parser.add_argument('--lr_decay', type=float, default=0.99)
 
 	parser.add_argument('--seed', type=int, default=42)
-	parser.add_argument('--output_dir', type=str, default='./logs')
+	parser.add_argument('--output_dir', type=str, default='./results')
 
 	return parser.parse_args()
 
@@ -161,7 +165,7 @@ def run(args: argparse.Namespace) -> None:
 		elif args.model == 'swin':
 			noise_multiplier = NOISE_MULTIPLIERS[args.task][args.epsilon]
 
-		privacy_engine = PrivacyEngine(accountant="rdp")
+		privacy_engine = PrivacyEngine(accountant='rdp')
 		local_model, optimizer, dataloader = privacy_engine.make_private(
 			module=local_model,
 			optimizer=optimizer,
@@ -219,5 +223,6 @@ def main():
 	args = parse_args()
 	run(args)
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
 	main()

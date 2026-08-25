@@ -5,8 +5,8 @@ import torch.nn as nn
 from opacus.optimizers.optimizer import DPOptimizer
 from torch.nn import functional as F
 
-from federated_lora.privacy import privatize, zero_grad
 from federated_lora.model import dewindow_grad_samples
+from federated_lora.privacy import privatize, zero_grad
 from federated_lora.server import Server
 
 
@@ -54,12 +54,12 @@ class LALoRA:
 	) -> None:
 		frozen = ('lora_A',) if step % 2 == 0 else ('lora_B',)
 		dewindow_grad_samples(model, batch_size)
-		
+
 		if optimizer.clipping_strategy == 'flat':
 			for name, p in model.named_parameters():
 				if p.requires_grad and any(f in name for f in frozen):
 					p.grad_sample = torch.zeros_like(p.grad_sample)
-	
+
 			if optimizer.pre_step():
 				for name, p in model.named_parameters():
 					if not p.requires_grad or p.grad is None:
@@ -68,7 +68,7 @@ class LALoRA:
 						p.grad = None
 					else:
 						p.grad = self.smooth_grad(name, p.grad)
-	
+
 				optimizer.original_optimizer.step()
 		else:
 			if optimizer.step_hook:
@@ -78,16 +78,16 @@ class LALoRA:
 				if p.requires_grad and any(f in name for f in frozen):
 					p.grad_sample = None
 					p.grad = None
-	
+
 			params = privatize(model, optimizer)
 
 			for name, p in model.named_parameters():
 				if p.requires_grad and p.grad is not None:
 					p.grad = self.smooth_grad(name, p.grad)
-	
+
 			optimizer.original_optimizer.step()
 			zero_grad(params)
-	
+
 		optimizer.zero_grad()
 
 	def aggregate(
@@ -95,5 +95,4 @@ class LALoRA:
 		uploads: list[dict[str, torch.Tensor]],
 		num_examples: list[int],
 	) -> dict[str, torch.Tensor]:
-		# LA-LoRA aggregates uniformly (1/|C|), per the paper
-		return Server.fedavg(uploads, [1] * len(uploads))
+		return Server.fedavg(uploads, num_examples)
