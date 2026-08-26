@@ -14,10 +14,11 @@ METHODS = ['dp_lora', 'ffa_lora', 'rolora', 'la_lora']
 EPSILONS = [3, 2, 1]
 SEEDS = [42]
 
+# ViT learning rate numbers
 LR = {
-	3: {'dp_lora': 0.2, 'ffa_lora': 0.2, 'rolora': 0.2, 'la_lora': 0.2},
-	2: {'dp_lora': 0.2, 'ffa_lora': 0.2, 'rolora': 0.2, 'la_lora': 0.2},
-	1: {'dp_lora': 0.1, 'ffa_lora': 0.2, 'rolora': 0.1, 'la_lora': 0.2},
+	3: {'dp_lora': 0.02, 'ffa_lora': 0.2, 'rolora': 0.1, 'la_lora': 0.1},
+	2: {'dp_lora': 0.02, 'ffa_lora': 0.2, 'rolora': 0.1, 'la_lora': 0.1},
+	1: {'dp_lora': 0.02, 'ffa_lora': 0.2, 'rolora': 0.02, 'la_lora': 0.1},
 }
 
 

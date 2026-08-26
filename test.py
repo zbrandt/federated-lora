@@ -555,26 +555,24 @@ def unit_methods() -> None:
 		and smoothed_b.shape == grad_b.shape,
 	)
 
-	# aggregation follows each method's own paper
+	# every method must aggregate the SAME way, or the cross-method table
+	# measures the aggregation rule instead of the method (2026-08-25)
 	uploads = [{'w': torch.tensor([1.0])}, {'w': torch.tensor([3.0])}]
 	sizes = [1, 3]
-	uniform = {
+	aggregated = {
 		name: METHODS[name]().aggregate(uploads, sizes)['w'].item()
-		for name in ('rolora', 'la_lora')
+		for name in sorted(METHODS)
 	}
-	weighted = {
-		name: METHODS[name]().aggregate(uploads, sizes)['w'].item()
-		for name in ('dp_lora', 'ffa_lora')
-	}
+	# size-weighted FedAvg: 1*(1/4) + 3*(3/4) = 2.5;  uniform 1/|C| = 2.0
 	check(
-		'rolora and la_lora aggregate uniformly (1/|C|)',
-		all(abs(v - 2.0) < 1e-6 for v in uniform.values()),
-		f'{uniform}',
+		'all methods aggregate identically (no aggregation confound)',
+		len({round(v, 9) for v in aggregated.values()}) == 1,
+		f'{aggregated}',
 	)
 	check(
-		'dp_lora and ffa_lora aggregate weighted by data size',
-		all(abs(v - 2.5) < 1e-6 for v in weighted.values()),
-		f'{weighted}',
+		'aggregation is size-weighted FedAvg for every method',
+		all(abs(v - 2.5) < 1e-6 for v in aggregated.values()),
+		f'{aggregated}',
 	)
 
 
