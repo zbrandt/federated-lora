@@ -1,14 +1,14 @@
 # Federated LoRA
 
 Federated LoRA is a Python harness for benchmarking federated, differentially 
-private LoRA fine-tuning methods. It fine-tunes a Vision Transformer (ViT) on 
-CIFAR-100 across a federation of clients, and reproduces and compares four 
-methods from the federated and private LoRA literature:
+private LoRA fine-tuning methods. It fine-tunes either the Swin or Vision 
+Transformer on CIFAR-100 and Tiny-ImageNet across a federation of clients, and 
+reproduces four methods from the federated and private LoRA literature:
 
-- **LA-LoRA**
-- **DP-LoRA**
-- **FFA-LoRA**
-- **RoLoRA**
+- [LA-LoRA](https://arxiv.org/abs/2602.19926v1)
+- [DP-LoRA](https://arxiv.org/abs/2312.17493)
+- [FFA-LoRA](https://arxiv.org/abs/2403.12313)
+- [RoLoRA](https://arxiv.org/abs/2409.02346)
 
 [Federated learning](https://arxiv.org/abs/1912.04977) trains a shared model 
 across many clients under the orchestration of a central server, keeping each 
@@ -31,8 +31,8 @@ dependencies and development tools.
 uv sync
 ```
 
-The project runs on [simulation servers]() with a CUDA-capable GPU available at 
-the ICE.
+The project runs on simulation servers with a CUDA-capable GPU available at 
+the [ICE](https://collab.dvb.bayern/spaces/TUMice).
 
 ## Usage
 
@@ -47,9 +47,7 @@ Each run auto-saves to `results/<method>_<task>_seed<seed>.json`
 
 The CLI exposes required flags `--task` and `--method`, while setting batch 
 size, target epsilon, learning rates for LoRA matrix A & B and classifier head 
-parameters, seed, and output directory are optional. The full harness 
-configuration of hyperparameters (client count, global rounds, local steps, 
-LoRA rank, etc.) lives in `federated_lora/config.py`. 
+parameters, seed, and output directory are optional.
 
 Repeat across seeds to build the mean and standard-deviation bands.
 
@@ -67,11 +65,12 @@ standard-deviation bands.
 python -m federated_lora plot results/ --output-dir figures
 ```
 
-<!-- To run the full comparison in one step — all four methods across three seeds, preceded by a smoke test and followed by plotting — use the benchmark script:
+## Authors
 
-```bash
-bash run_benchmark.sh
-``` -->
+- [Zachary Brandt](https://www.github.com/zbrandt)
+- [Megan Campbell](https://github.com/mjc180501)
+- [Yue Xia](https://github.com/yuexia8)
+- [Rawad Bitar](https://github.com/yuexia8)
 
 ## Contributing
 
